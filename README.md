@@ -1,51 +1,90 @@
 # VOODOO-CASEBOOK
 
-Local-first, governed work-memory and evidence journal for the VOODOO ecosystem.
+Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
-> **Status: INITIAL REPOSITORY ONLY.** No runtime, persistent database, ChatGPT memory connector, verified backup or agent integration is implemented yet. A README is not an operational acceptance result.
+> **v0.1 REVIEW CANDIDATE:** A Python standard-library SQLite event store, CLI and negative test suite exist on the review branch. This is NOT a CASER integration, agent executor, independently witnessed evidence vault, production release, or an authorization system.
 
-## Scope
+## Core capabilities (v0.1)
 
-VOODOO-CASEBOOK is an independent project. Its intended responsibilities are:
+- Create a session with an immutable initial GOAL event.
+- Append attributed events with allowed CASEBOOK types (e.g. DECISION, TODO, EVIDENCE, BLOCKER, RESULT).
+- Persist in a private SQLite database, reopen across processes, and view a session.
+- Keep a global monotonically sequenced event chain, SHA-256 over canonical JSON, an anchored head **inside the same database**, and append-only SQL triggers.
+- Fail closed on corrupted records, broken session/project bindings, incorrect head hashes, unsafe data locations and invalid event contracts.
+- Use SQLite WAL, full synchronous writes and a single transaction for each new event.
+- Use no paid services, non-standard packages, network dependencies, or additional permanent daemons.
 
-- Capture session-scoped goals, decisions, issues, results and evidence references.
-- Preserve source provenance and distinguish observations from claims or hypotheses.
-- Support resumable handoffs across authorized tools and agents.
-- Verify record integrity without claiming that a stored claim is independently true.
+### Separation of responsibilities
 
-**Authority boundary:** CASEBOOK records and retrieval **never grant permission**, execute work, or promote notes to canonical project truth. Project repositories, explicit governance and verified runtime evidence remain authoritative.
+**GitHub repository = source code, schemas, tests, public documentation.**
 
-## Source vs. data
+**Private evidence directory = actual session data, never committed.**
 
-This repository is for **source code, schemas, tests and public-safe documentation only**.
+Default on VoodooBook:
 
-Do not commit real session events, databases, personal information, access tokens, local secrets, backups, agent transcripts or private evidence.
+- Source: `/Users/eimyna/0_DEV/VOODOO-CASEBOOK`
+- Private database: `/Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK/casebook.sqlite3`
 
-Future local layout:
+The parent evidence directory must be owner-only (`0700`), and the database is set to `0600`. Symlinked data roots, unsafe traversal and any destination inside this source repository are rejected. The database is **plaintext**: do not record passwords, tokens or unnecessary sensitive information. Whole-device and off-device encryption/key-custody are not proved by this prototype.
 
-- Source: `~/0_DEV/VOODOO-CASEBOOK`
-- Private runtime evidence: `~/0_EVIDENCE/VOODOO-CASEBOOK` (outside Git)
+## Quick start
 
-The user-specific machine bootstrap and project governance must be read before working on a local checkout. No other VOODOO repository is automatically authorized for changes.
+From the cloned repository root (Python 3.9+):
 
-## First acceptance target
+```sh
+python3 -B -m voodoo_casebook init
+python3 -B -m voodoo_casebook start --project demo --goal "Resume a governed session"
+python3 -B -m voodoo_casebook append --session ses_REPLACE_WITH_RETURNED_ID --type DECISION --summary "Use local SQLite"
+python3 -B -m voodoo_casebook show --session ses_REPLACE_WITH_RETURNED_ID
+python3 -B -m voodoo_casebook verify
+```
 
-A standard-library Python + SQLite core that can:
+To use a separate private, owner-only directory for a controlled acceptance test, pass `--data-root /absolute/path/outside/repo` **before** the subcommand. Do not put private data under `0_DEV`.
 
-1. Append an attributed event to a session.
-2. Reopen the same database in a new process and read the exact event.
-3. Detect corrupted/changed record content via a verifiable event hash chain.
-4. Deny unsafe paths and preserve project/session isolation.
-5. Pass negative, restart, recovery and read-only regression tests.
+Package API:
 
-Until these checks are evidenced, persistence is **PROPOSED**, not operational.
+```python
+from pathlib import Path
+from voodoo_casebook import CasebookStore
 
-## Index / integrations
+store = CasebookStore(Path.home() / "0_EVIDENCE" / "VOODOO-CASEBOOK")
+sid = store.start_session(project="demo", goal="Verify persistence")
+store.append(
+    session_id=sid,
+    event_type="DECISION",
+    summary="Keep data outside Git",
+    source="user",
+    evidence_refs=["https://github.com/eimyroot/VOODOO-CASEBOOK"],
+    metadata={"claim_status": "UNVERIFIED"},
+)
+assert store.verify()["verdict"] == "VERIFIED_INTEGRITY"
+assert len(CasebookStore(store.root).get_session(sid)["events"]) == 2
+```
 
-GitHub repository: https://github.com/eimyroot/VOODOO-CASEBOOK
+`VERIFIED_INTEGRITY` attests only **internal journal structure**, not the truth of notes, evidence authenticity, cross-machine durability, or an independently signed verifier receipt.
 
-CASER, CASER-SOURCER and external ChatGPT integrations are future **adapters**, not bundled execution authorities. Indexing source code must never be confused with indexing private CASEBOOK data.
+## Validation
 
-## License
+```sh
+python3 -B -m unittest discover -s tests -v
+git diff --check
+```
 
-Not yet selected. No license grant should be inferred.
+Tests include separate-process reopening, independent hash recomputation, tamper/failure cases, simultaneous append operations and SQLite online-backup/restore verification. No provider WRITE/deploy/release action is exposed.
+
+## Non-authority rule
+
+CASEBOOK does not authorize execution, grant approval, create or merge pull requests, modify other project repositories, or promote entries to canonical state.
+
+CASER is a future orchestration adapter; CASER-SOURCER governs provenance and canonical source classification; Voodoo-One governs authorization; an independent verifier must separately confirm execution outcomes.
+
+## Integrity limits
+
+See [docs/INTEGRITY.md](docs/INTEGRITY.md). The v0.1 hash chain **is not cryptographically tamper-proof against an attacker who can edit the entire SQLite database and recompute all hashes**. The head hash lives in that same database; independent anchoring, external verifier identity and authenticated/encrypted backups remain future gates.
+
+## Index and project status
+
+Machine-readable repository index: [project-index.json](project-index.json).
+Repository: https://github.com/eimyroot/VOODOO-CASEBOOK.
+
+No license has yet been selected; do not infer permission to reuse the source beyond what applicable law allows.
