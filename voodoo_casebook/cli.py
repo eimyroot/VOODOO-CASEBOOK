@@ -4,19 +4,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 from .core import CasebookStore, IntegrityError
+from .backups import create_backup, verify_backup
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="VOODOO-CASEBOOK governed local memory v0.1")
     parser.add_argument(
         "--data-root", type=Path,
-        default=Path.home() / "0_EVIDENCE" / "VOODOO-CASEBOOK",
-        help="Private local evidence folder OUTSIDE source repositories",
+        default=os.environ.get("VOODOO_CASEBOOK_DATA_ROOT"),
+        help="REQUIRED absolute private evidence root (or VOODOO_CASEBOOK_DATA_ROOT)",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Create empty local journal")
@@ -34,7 +36,18 @@ def main(argv: list[str] | None = None) -> int:
     show = commands.add_parser("show", help="Show session with all attributed events")
     show.add_argument("--session", required=True)
     commands.add_parser("verify", help="Read-only journal physical+hash-chain check")
+    commands.add_parser("backup", help="Create verified local SQLite online snapshot")
+    backup_verify = commands.add_parser(
+        "backup-verify", help="Independently verify a named snapshot",
+    )
+    backup_verify.add_argument("--backup-id", required=True)
     args = parser.parse_args(argv)
+    if args.data_root is None:
+        print(json.dumps({
+            "status": "BLOCKED",
+            "reason": "explicit --data-root or VOODOO_CASEBOOK_DATA_ROOT is required",
+        }))
+        return 2
     try:
         store = CasebookStore(args.data_root)
         if args.command == "init":
@@ -54,6 +67,10 @@ def main(argv: list[str] | None = None) -> int:
             result = store.get_session(args.session)
         elif args.command == "verify":
             result = store.verify()
+        elif args.command == "backup":
+            result = create_backup(store)
+        elif args.command == "backup-verify":
+            result = verify_backup(store, args.backup_id)
         else:
             raise AssertionError("unreachable command")
     except (ValueError, IntegrityError, LookupError, PermissionError,

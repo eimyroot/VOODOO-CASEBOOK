@@ -1,4 +1,4 @@
-# v0.1 integrity, trust and recovery contract
+# v0.2 integrity, trust and recovery contract
 
 **Scope:** local, single-writer-serialized SQLite event journal used only for work memory and evidence pointers.
 
@@ -44,3 +44,14 @@ Keep real records, `*.sqlite3`, `*.db`, `*.jsonl`, backups, secrets and transcri
 - Independent verifier receipt tied to exact evidence and source SHA.
 
 **No stage above is implemented or authorized by the existence of v0.1.**
+
+## v0.2 additions
+
+- Explicit data-root selection is mandatory in the CLI; no temporary HOME inference.
+- Retried session and event IDs are idempotent only for identical request content.
+- Missing append-only triggers are rejected on reopening existing databases; no silent schema repair.
+- Verified on-demand SQLite snapshots and SHA-256 manifests are stored locally outside Git.
+- A local backup manifest does not anchor the hash chain independently and is not encrypted or off-host.
+- No automatic scheduling, rotation, pruning, or production recovery action is enabled.
+
+See [Reliability and local recovery](RELIABILITY.md) for crash tests and remaining gates.
