@@ -1,0 +1,39 @@
+# Local runtime data and private evidence are never repository artifacts.
+# Keep real CASEBOOK sessions outside Git, under the governed private evidence root.
+
+/data/
+/runtime/
+/evidence/
+/backups/
+/secrets/
+/private/
+/.local/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.jsonl
+casebook.md
+*.enc
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Python and tooling artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.DS_Store
