@@ -1,0 +1,47 @@
+{
+  "schema": "voodoo-casebook/source-index/v1",
+  "project_id": "VOODOO-CASEBOOK",
+  "canonical_source": {
+    "provider": "github",
+    "repository": "eimyroot/VOODOO-CASEBOOK",
+    "branch": "main",
+    "source_scope": "tracked-code-schemas-tests-public-safe-docs"
+  },
+  "source_paths": [
+    "README.md",
+    ".gitignore",
+    "project-index.json"
+  ],
+  "private_evidence": {
+    "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
+    "lifecycle": "NOT_CREATED",
+    "in_git": false,
+    "access": "local-governed"
+  },
+  "runtime": {
+    "status": "NOT_IMPLEMENTED",
+    "persistent_events": false,
+    "sqlite": false,
+    "agent_bridge": false,
+    "independent_verifier": false
+  },
+  "index": {
+    "type": "repository-manifest",
+    "indexable": true,
+    "github_code_search_index_verified": false,
+    "casebook_content_indexed": false,
+    "sourcer_persistence_verified": false
+  },
+  "authority": {
+    "repository": "source-and-specification-only",
+    "casebook": "no-execution-or-approval-authority",
+    "notes": "not-canonical-without-independent-adoption-and-verification"
+  },
+  "next_acceptance": "append-session-event/restart-readback/integrity-negative-tests",
+  "safety": {
+    "no_secrets_or_personal_data_in_git": true,
+    "no_production_effects": true,
+    "no_recurring_costs": true,
+    "source_not_equal_evidence": true
+  }
+}
