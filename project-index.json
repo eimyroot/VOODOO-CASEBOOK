@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.2-reliability",
-    "base": "review/v0.1-persistent-core",
-    "status": "LOCAL_TESTED_AWAITING_INDEPENDENT_REVIEW",
-    "version": "0.2.0"
+    "branch": "review/v0.4-single-verify",
+    "base": "main@710f37129712cb567e97bd7052e8475b3a94c895",
+    "status": "LOCAL_TESTED_AWAITING_GITHUB_CI_AND_INDEPENDENT_REVIEW",
+    "version": "0.4.0rc1"
   },
   "source_paths": [
     "README.md",
@@ -25,7 +25,11 @@
     "tests/test_casebook.py",
     "docs/RELIABILITY.md",
     "voodoo_casebook/backups.py",
-    "tests/test_reliability.py"
+    "tests/test_reliability.py",
+    "docs/PERFORMANCE_V0_4.md",
+    "tests/test_single_verify.py",
+    "benchmarks/append_latency.py",
+    ".github/workflows/casebook-ci.yml"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -35,7 +39,7 @@
     "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "LOCAL_V0_2_REVIEW_CANDIDATE",
+    "status": "SOURCE_V0_3_MERGED_V0_4_LOCAL_REVIEW_CANDIDATE",
     "persistent_events": true,
     "sqlite": true,
     "hash_chain": true,
@@ -51,7 +55,12 @@
     "backup_verify": true,
     "scheduled_backup": false,
     "off_device_backup": false,
-    "backup_manifest_signed": false
+    "backup_manifest_signed": false,
+    "full_history_audit_per_existing_store_write": true,
+    "full_chain_scans_per_existing_store_write": 1,
+    "incremental_checkpoint_enabled": false,
+    "full_history_validation_still_linear": true,
+    "production_release_verified": false
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -80,7 +89,26 @@
       "missing_trigger_negative": true
     },
     "v0_2_github_review": "PENDING",
-    "v0_2_production_stability": "NOT_VERIFIED"
+    "v0_2_production_stability": "NOT_VERIFIED",
+    "v0_3_integrated_main_sha": "710f37129712cb567e97bd7052e8475b3a94c895",
+    "v0_4_local_regression": {
+      "tests": 51,
+      "legacy": 44,
+      "new": 7,
+      "result": "PASS",
+      "python": "3.9.6",
+      "integrity_preserved": true
+    },
+    "v0_4_synthetic_benchmark": {
+      "baseline_commit": "710f37129712cb567e97bd7052e8475b3a94c895",
+      "append_count": 160,
+      "baseline_total_ms": 6501.361,
+      "candidate_total_ms": 5030.847,
+      "speedup_factor": 1.292,
+      "limitations": "one sequential local comparison, not production/10k+"
+    },
+    "v0_4_github_ci": "NOT_YET_RUN",
+    "v0_4_independent_review": "NOT_YET_APPROVED"
   },
   "index": {
     "type": "repository-manifest",

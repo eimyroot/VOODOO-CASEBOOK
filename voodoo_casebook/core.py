@@ -1,4 +1,4 @@
-"""VOODOO-CASEBOOK v0.2: local-only, append-only SQLite event journal.
+"""VOODOO-CASEBOOK v0.4 candidate: local-only, append-only SQLite event journal.
 
 The database is evidence, never authorization or independent proof of a claim.
 No provider/network calls, project edits, or implicit canonical promotion.
@@ -227,6 +227,17 @@ class CasebookStore:
                     db.execute("ROLLBACK")
                 raise
 
+    def _ensure_initialized(self) -> None:
+        """Create only a missing database; existing data is verified once.
+
+        Public initialize() deliberately remains a full health check on both
+        new and existing databases. start_session()/append() acquire their own
+        BEGIN IMMEDIATE and run full-chain verification before every write.
+        No checkpoint is trusted and no historical integrity scan is skipped.
+        """
+        if not self.database.exists():
+            self.initialize()
+
     @staticmethod
     def _verify_connection(db: sqlite3.Connection) -> dict[str, Any]:
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -363,7 +374,7 @@ class CasebookStore:
         project = _text(project, "project", 120)
         goal = _text(goal, "goal", 8192)
         session_id = _text(session_id or "ses_" + uuid.uuid4().hex, "session_id", 128)
-        self.initialize()
+        self._ensure_initialized()
         with closing(self._connect(write=True)) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
@@ -404,7 +415,7 @@ class CasebookStore:
         refs = _validate_references([] if evidence_refs is None else evidence_refs)
         meta = _validate_metadata({} if metadata is None else metadata)
         event_id = _text(event_id or "cbk_" + uuid.uuid4().hex, "event_id", 128)
-        self.initialize()
+        self._ensure_initialized()
         with closing(self._connect(write=True)) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
