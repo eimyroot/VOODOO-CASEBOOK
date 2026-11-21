@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.6-local-operations",
-    "base": "main@38457b11f100a550da709a4cfcfd3c80306690ff",
-    "status": "LOCAL_TESTED_CI_AND_REVIEW_PENDING",
-    "version": "0.6.0rc1"
+    "branch": "review/v0.7-atomic-restore",
+    "base": "review/v0.7-cert-pin@efa3f54bd5786df42b58d35f98b9962a5a2390b4",
+    "status": "LOCAL_SYNTHETIC_TEST_PASS_REVIEW_AND_CI_PENDING",
+    "version": "0.7.0rc3"
   },
   "source_paths": [
     "README.md",
@@ -33,7 +33,11 @@
     "docs/PERFORMANCE_V0_5.md",
     "tests/test_atomic_batch.py",
     "docs/LOCAL_OPERATIONS_V0_6.md",
-    "tests/test_local_operations.py"
+    "tests/test_local_operations.py",
+    "docs/OFFLINE_RECOVERY_V0_7.md",
+    "tests/test_offline_transfer.py",
+    "voodoo_casebook/offline_transfer.py",
+    "docs/AGENT_ISOLATION_GATE.md"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -43,7 +47,7 @@
     "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "SOURCE_V0_5_MERGED_V0_6_LOCAL_OPERATIONS_CANDIDATE",
+    "status": "SOURCE_V0_6_MERGED_V0_7_OFFLINE_ENVELOPE_REVIEW_CANDIDATE",
     "persistent_events": true,
     "sqlite": true,
     "hash_chain": true,
@@ -73,7 +77,24 @@
     "restore_to_new_root_opt_in": true,
     "automatic_restore_activation": false,
     "agent_writer_bridge_enabled": false,
-    "agent_database_access_granted": false
+    "agent_database_access_granted": false,
+    "cms_encrypted_offline_export_candidate": true,
+    "cms_encrypted_offline_import_candidate": true,
+    "aead_crypto_proven": false,
+    "authenticated_external_anchor": false,
+    "off_device_restore_proven": false,
+    "operator_held_private_key_not_in_source": true,
+    "recipient_certificate_pin_required_before_export": true,
+    "recipient_certificate_pin_required_before_import": true,
+    "cert_bytes_staged_for_crypto_operation": true,
+    "cert_pin_approval_verified_offhost": false,
+    "same_uid_agent_isolation_verified": false,
+    "agent_os_identity_change_performed": false,
+    "agent_broker_active": false,
+    "offline_restore_staged_before_final_publish": true,
+    "interrupted_restore_final_path_preverified": true,
+    "unverified_plaintext_staging_possible_on_process_crash": true,
+    "atomic_no_clobber_same_uid_proven": false
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -167,9 +188,40 @@
       ],
       "limitations": "two synthetic A/B sequences; warm-write overhead approximately 5-9%; no production SLO"
     },
-    "v0_6_full_suite": "PENDING",
-    "v0_6_github_ci": "PENDING",
-    "v0_6_independent_review": "PENDING"
+    "v0_6_full_suite": "PASS_81_TESTS_ORIGINAL_LOCAL",
+    "v0_6_github_ci": "PASS_81_TESTS_RUN_44908523523",
+    "v0_6_independent_review": "PENDING",
+    "v0_6_merged_main_sha": "6748cfbf30c43ecf1958797f02776f0bbf02fb65",
+    "v0_7_new_regression": {
+      "tests": 11,
+      "result": "LOCAL_PASS",
+      "scope": "synthetic CMS export/import and independent pinning, wrong key, corrupt package, unsafe paths/permissions, no live DB writes"
+    },
+    "v0_7_github_ci": "PENDING",
+    "v0_7_off_host_restore": "NOT_PERFORMED",
+    "v0_7_external_key_custody": "NOT_VERIFIED",
+    "v0_7_independent_review": "PENDING",
+    "v0_7_base_github_ci": "PASS_92_TESTS_44921884279",
+    "v0_7_certificate_substitution_source_finding": "REPRODUCED_IN_PARENT",
+    "v0_7_cert_pin_hardening": {
+      "result": "LOCAL_PASS_16_CMS_TESTS",
+      "new_tests": 5,
+      "tests_total_expected": 97,
+      "post_preflight_swap_staged_copy": true,
+      "independent_certificate_pin_checked": true
+    },
+    "v0_7_hardening_github_ci": "NOT_RUN_YET",
+    "v0_7_hardening_formal_review": "PENDING",
+    "agent_isolation_plan": "SOURCE_ONLY_NO_OS_CHANGES",
+    "v0_7_atomic_restore_local": {
+      "test_case": "SIGKILL-like process termination after decrypt before verification",
+      "result": "LOCAL_PASS_20_CMS_TESTS",
+      "new_tests": 4,
+      "expected_total_suite": 101,
+      "notes": "Private incomplete plaintext staging may survive force-kill; operator cleanup required; not cross-device DR"
+    },
+    "v0_7_atomic_restore_ci": "PENDING",
+    "v0_7_atomic_restore_independent_security_review": "PENDING"
   },
   "index": {
     "type": "repository-manifest",
