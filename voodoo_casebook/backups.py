@@ -102,6 +102,89 @@ def verify_backup(store: CasebookStore, backup_id: str) -> dict[str, Any]:
     return {"status": "BACKUP_VERIFIED", "backup_id": backup_id, **verified}
 
 
+def restore_backup_to_new_root(
+    store: CasebookStore, backup_id: str, target_root: Path,
+) -> dict[str, Any]:
+    """Verify an existing backup and restore only into a NEW owner-only root.
+
+    Never replace, rename, truncate, or repoint the active journal. Caller
+    must explicitly choose a non-existing destination with a real, owner-only
+    parent. No agent hookup, service activation, or automatic promotion.
+    """
+    original = verify_backup(store, backup_id)
+    target = Path(target_root).expanduser()
+    if not target.is_absolute() or ".." in target.parts:
+        raise ValueError("restore destination must be absolute without traversal")
+    target = target.absolute()
+    if "0_DEV" in target.parts:
+        raise ValueError("restore data must never be placed in the development source tree")
+    live = store.root.resolve()
+    if target == live or live in target.parents:
+        raise ValueError("restore destination must be outside the active data root")
+    parent = target.parent
+    if (not parent.is_dir() or parent.is_symlink()
+            or parent.resolve() != parent.absolute()
+            or parent.stat().st_uid != os.getuid()
+            or stat.S_IMODE(parent.stat().st_mode) & 0o077):
+        raise PermissionError("restore destination parent must be a real owner-only directory")
+    if target.exists() or target.is_symlink():
+        raise FileExistsError("refusing to overwrite existing restore destination")
+
+    backup = _backup_root(store, create=False) / backup_id
+    snapshot_file = backup / DATABASE_FILENAME
+    manifest_file = backup / MANIFEST_NAME
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    expected_digest = manifest["database_sha256"]
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("O_NOFOLLOW is required for safe restore")
+    target.mkdir(mode=0o700, parents=False, exist_ok=False)
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        dest_fd = os.open(str(target / DATABASE_FILENAME), flags, 0o600)
+        try:
+            src_fd = os.open(str(snapshot_file), os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                source_mode = os.fstat(src_fd)
+                if (not stat.S_ISREG(source_mode.st_mode)
+                        or source_mode.st_uid != os.getuid()
+                        or stat.S_IMODE(source_mode.st_mode) & 0o077):
+                    raise PermissionError("backup source file has unsafe permissions")
+                with os.fdopen(src_fd, "rb", closefd=False) as source, \
+                     os.fdopen(dest_fd, "wb", closefd=False) as destination:
+                    shutil.copyfileobj(source, destination, 1024 * 1024)
+                    destination.flush()
+                    os.fsync(destination.fileno())
+            finally:
+                os.close(src_fd)
+        finally:
+            os.close(dest_fd)
+        if _sha256(target / DATABASE_FILENAME) != expected_digest:
+            raise IntegrityError("restored database digest differs from verified snapshot")
+        # Detect changes to backup after preflight and verify restored data
+        # independently via the original full SQLite/hash-chain verifier.
+        verified_again = verify_backup(store, backup_id)
+        restored = CasebookStore(target).verify()
+        if any(restored[field] != original[field] or
+               restored[field] != verified_again[field]
+               for field in ("head_hash", "head_seq", "event_count", "session_count")):
+            raise IntegrityError("restored journal does not match source backup")
+        _fsync_dir(target)
+        _fsync_dir(parent)
+        return {
+            "status": "RESTORE_VERIFIED_ISOLATED",
+            "restore_root": str(target),
+            "backup_id": backup_id,
+            "database_sha256": expected_digest,
+            **restored,
+            "active_journal_untouched": True,
+            "promoted_to_active": False,
+        }
+    except Exception:
+        # Only remove the directory exclusively created by this invocation.
+        shutil.rmtree(str(target))
+        raise
+
+
 def create_backup(store: CasebookStore) -> dict[str, Any]:
     """Create an atomic owner-only SQLite online backup and independently reopen it.
 

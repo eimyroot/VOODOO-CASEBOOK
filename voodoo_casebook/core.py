@@ -6,13 +6,15 @@ No provider/network calls, project edits, or implicit canonical promotion.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import sqlite3
 import stat
+import time
 import uuid
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -105,7 +107,7 @@ class CasebookStore:
             raise ValueError("data root must be an absolute path without traversal")
         self.database = self.root / DATABASE_FILENAME
 
-    def _guard(self, *, create: bool) -> None:
+    def _guard(self, *, create: bool, inspect_database: bool = True) -> None:
         source_root = Path(__file__).resolve().parent.parent
         requested = self.root.absolute()
         if os.path.commonpath((str(requested), str(source_root))) == str(source_root):
@@ -120,6 +122,8 @@ class CasebookStore:
             raise ValueError("data root is not a safe real directory")
         if stat.S_IMODE(self.root.stat().st_mode) & 0o077:
             raise PermissionError("casebook data root must not be accessible by group or others")
+        if not inspect_database:
+            return
         if self.database.is_symlink():
             raise ValueError("database must not be a symlink")
         if self.database.exists():
@@ -154,8 +158,58 @@ class CasebookStore:
             db.execute("PRAGMA query_only=ON")
         return db
 
+    @contextmanager
+    def _initialization_lock(self):
+        """Bounded owner-only cross-process lock for first SQLite initialization.
+
+        Keep this stable lock file for the lifetime of the data root; deleting
+        an active lock path could split the advisory lock into two inodes.
+        This protects all public writer cold starts, including explicit init.
+        """
+        self._guard(create=True, inspect_database=False)
+        flags = os.O_CREAT | os.O_RDWR
+        if not hasattr(os, "O_NOFOLLOW"):
+            raise OSError("O_NOFOLLOW is required for safe initialization")
+        fd = os.open(str(self.root / ".casebook-init.lock"),
+                     flags | os.O_NOFOLLOW, 0o600)
+        locked = False
+        try:
+            mode = os.fstat(fd)
+            if (not stat.S_ISREG(mode.st_mode) or mode.st_uid != os.getuid()
+                    or mode.st_nlink != 1
+                    or stat.S_IMODE(mode.st_mode) & 0o077):
+                raise PermissionError("unsafe CASEBOOK initialization lock")
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    locked = True
+                    break
+                except (BlockingIOError, InterruptedError):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("CASEBOOK initialization lock timeout")
+                    time.sleep(0.02)
+            self._guard(create=True, inspect_database=False)
+            yield
+        finally:
+            if locked:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
     def initialize(self) -> None:
+        with self._initialization_lock():
+            self._initialize_locked()
+
+    def _initialize_locked(self) -> None:
+        """Only run with the cross-process initialization lock held."""
         was_initialized = self.database.exists()
+        if not was_initialized:
+            # Pre-create with 0600: sqlite3.connect() alone may create 0644
+            # briefly and another client would refuse the transient mode.
+            fd = os.open(str(self.database),
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600)
+            os.close(fd)
         with closing(self._connect(write=True)) as db:
             try:
                 if was_initialized:
@@ -228,15 +282,18 @@ class CasebookStore:
                 raise
 
     def _ensure_initialized(self) -> None:
-        """Create only a missing database; existing data is verified once.
+        """Serialize cold start without duplicating a warm-store full audit.
 
-        Public initialize() deliberately remains a full health check on both
-        new and existing databases. start_session()/append() acquire their own
-        BEGIN IMMEDIATE and run full-chain verification before every write.
-        No checkpoint is trusted and no historical integrity scan is skipped.
+        A short lock is acquired before inspecting SQLite's existence and
+        file mode, preventing a second writer from entering partial schema
+        creation or observing temporarily broad permissions. The write
+        transaction separately performs the complete history audit.
         """
-        if not self.database.exists():
-            self.initialize()
+        with self._initialization_lock():
+            if not self.database.exists():
+                self._initialize_locked()
+            else:
+                self._guard(create=False)
 
     @staticmethod
     def _verify_connection(db: sqlite3.Connection) -> dict[str, Any]:

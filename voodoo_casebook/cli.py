@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .core import CasebookStore, IntegrityError
-from .backups import create_backup, verify_backup
+from .backups import create_backup, verify_backup, restore_backup_to_new_root
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,6 +41,12 @@ def main(argv: list[str] | None = None) -> int:
         "backup-verify", help="Independently verify a named snapshot",
     )
     backup_verify.add_argument("--backup-id", required=True)
+    restore = commands.add_parser(
+        "restore-to-new-root",
+        help="Verify and restore a snapshot into a fresh private directory; never activate it",
+    )
+    restore.add_argument("--backup-id", required=True)
+    restore.add_argument("--to", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.data_root is None:
         print(json.dumps({
@@ -71,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
             result = create_backup(store)
         elif args.command == "backup-verify":
             result = verify_backup(store, args.backup_id)
+        elif args.command == "restore-to-new-root":
+            result = restore_backup_to_new_root(store, args.backup_id, args.to)
         else:
             raise AssertionError("unreachable command")
     except (ValueError, IntegrityError, LookupError, PermissionError,

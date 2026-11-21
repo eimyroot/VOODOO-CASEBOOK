@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.5-atomic-batch",
-    "base": "review/v0.4-single-verify@cbcda675fa4d435e7776cea8a2712aadc6290b73",
-    "status": "LOCAL_CANDIDATE_BENCHMARKED_AWAITING_GITHUB_CI_AND_INDEPENDENT_REVIEW",
-    "version": "0.5.0rc1"
+    "branch": "review/v0.6-local-operations",
+    "base": "main@38457b11f100a550da709a4cfcfd3c80306690ff",
+    "status": "LOCAL_TESTED_CI_AND_REVIEW_PENDING",
+    "version": "0.6.0rc1"
   },
   "source_paths": [
     "README.md",
@@ -31,7 +31,9 @@
     "benchmarks/append_latency.py",
     ".github/workflows/casebook-ci.yml",
     "docs/PERFORMANCE_V0_5.md",
-    "tests/test_atomic_batch.py"
+    "tests/test_atomic_batch.py",
+    "docs/LOCAL_OPERATIONS_V0_6.md",
+    "tests/test_local_operations.py"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -41,7 +43,7 @@
     "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "SOURCE_V0_3_MERGED_V0_4_AND_V0_5_STACKED_REVIEW_CANDIDATES",
+    "status": "SOURCE_V0_5_MERGED_V0_6_LOCAL_OPERATIONS_CANDIDATE",
     "persistent_events": true,
     "sqlite": true,
     "hash_chain": true,
@@ -65,7 +67,13 @@
     "production_release_verified": false,
     "atomic_batch_max_events": 32,
     "atomic_batch_full_prior_audit_once_per_transaction": true,
-    "atomic_batch_opt_in": true
+    "atomic_batch_opt_in": true,
+    "cold_start_cross_process_lock": true,
+    "sqlite_created_owner_only": true,
+    "restore_to_new_root_opt_in": true,
+    "automatic_restore_activation": false,
+    "agent_writer_bridge_enabled": false,
+    "agent_database_access_granted": false
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -134,8 +142,34 @@
       ],
       "limitations": "two paired local synthetic comparisons, different request atomicity, not production load"
     },
-    "v0_5_github_ci": "NOT_YET_RUN",
-    "v0_5_independent_review": "NOT_YET_APPROVED"
+    "v0_5_github_ci": "PASS_64_TESTS_44903668830",
+    "v0_5_independent_review": "NOT_YET_APPROVED",
+    "v0_5_merged_main_sha": "38457b11f100a550da709a4cfcfd3c80306690ff",
+    "v0_6_new_regression": {
+      "tests": 17,
+      "result": "LOCAL_PASS",
+      "scope": "four concurrent fresh process starts, exact idempotent parallel starts, permission/lock failure, manual verified restore, negative path/backup tests"
+    },
+    "v0_6_synthetic_warm_lock_overhead": {
+      "base": "v0.5",
+      "candidate": "v0.6",
+      "dataset_initial_events": 65,
+      "additional_single_writes": 40,
+      "trials": [
+        {
+          "v05_ms": 1267.081,
+          "v06_ms": 1376.077
+        },
+        {
+          "v05_ms": 1347.785,
+          "v06_ms": 1409.624
+        }
+      ],
+      "limitations": "two synthetic A/B sequences; warm-write overhead approximately 5-9%; no production SLO"
+    },
+    "v0_6_full_suite": "PENDING",
+    "v0_6_github_ci": "PENDING",
+    "v0_6_independent_review": "PENDING"
   },
   "index": {
     "type": "repository-manifest",
