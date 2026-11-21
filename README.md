@@ -2,7 +2,7 @@
 
 Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
-> **v0.2 REVIEW CANDIDATE:** Local-only SQLite storage, retry-safe idempotency, crash-recovery regression tests, and verified on-demand SQLite snapshots. This is NOT a CASER integration, scheduled backup service, encrypted/off-device recovery, external verifier, or production release.
+> **v0.3 SOURCE ADOPTED IN MAIN; v0.4 PERFORMANCE REVIEW CANDIDATE:** Local-only SQLite event memory, retry-safe idempotency, crash-recovery regression tests, and verified on-demand snapshots. The v0.4 candidate removes a redundant pre-write full integrity scan but still verifies the entire history before every write. Not a CASER execution adapter, encrypted/off-device disaster recovery, or production release.
 
 ## Core capabilities (v0.1)
 
@@ -75,7 +75,13 @@ python3 -B -m unittest discover -s tests -v
 git diff --check
 ```
 
-Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. No provider WRITE/deploy/release action is exposed. See [v0.2 recovery boundaries](docs/RELIABILITY.md).
+Synthetic benchmark (explicit private evidence parent; never use a real database):
+
+```sh
+python3 -B -m benchmarks.append_latency --data-parent /Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK --events 160
+```
+
+Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. v0.4 adds one-scan-per-write assertions and negative historical-tamper cases. See [v0.4 performance measurement](docs/PERFORMANCE_V0_4.md) and [v0.2 recovery boundaries](docs/RELIABILITY.md). No provider WRITE/deploy/release action is exposed.
 
 ## Non-authority rule
 
