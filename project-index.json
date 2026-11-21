@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.6-local-operations",
-    "base": "main@38457b11f100a550da709a4cfcfd3c80306690ff",
-    "status": "LOCAL_TESTED_CI_AND_REVIEW_PENDING",
-    "version": "0.6.0rc1"
+    "branch": "review/v0.7-offline-envelope",
+    "base": "main@6748cfbf30c43ecf1958797f02776f0bbf02fb65",
+    "status": "LOCAL_SYNTHETIC_TESTED_REVIEW_AND_CI_PENDING",
+    "version": "0.7.0rc1"
   },
   "source_paths": [
     "README.md",
@@ -33,7 +33,10 @@
     "docs/PERFORMANCE_V0_5.md",
     "tests/test_atomic_batch.py",
     "docs/LOCAL_OPERATIONS_V0_6.md",
-    "tests/test_local_operations.py"
+    "tests/test_local_operations.py",
+    "docs/OFFLINE_RECOVERY_V0_7.md",
+    "tests/test_offline_transfer.py",
+    "voodoo_casebook/offline_transfer.py"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -43,7 +46,7 @@
     "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "SOURCE_V0_5_MERGED_V0_6_LOCAL_OPERATIONS_CANDIDATE",
+    "status": "SOURCE_V0_6_MERGED_V0_7_OFFLINE_ENVELOPE_REVIEW_CANDIDATE",
     "persistent_events": true,
     "sqlite": true,
     "hash_chain": true,
@@ -73,7 +76,13 @@
     "restore_to_new_root_opt_in": true,
     "automatic_restore_activation": false,
     "agent_writer_bridge_enabled": false,
-    "agent_database_access_granted": false
+    "agent_database_access_granted": false,
+    "cms_encrypted_offline_export_candidate": true,
+    "cms_encrypted_offline_import_candidate": true,
+    "aead_crypto_proven": false,
+    "authenticated_external_anchor": false,
+    "off_device_restore_proven": false,
+    "operator_held_private_key_not_in_source": true
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -167,9 +176,19 @@
       ],
       "limitations": "two synthetic A/B sequences; warm-write overhead approximately 5-9%; no production SLO"
     },
-    "v0_6_full_suite": "PENDING",
-    "v0_6_github_ci": "PENDING",
-    "v0_6_independent_review": "PENDING"
+    "v0_6_full_suite": "PASS_81_TESTS_ORIGINAL_LOCAL",
+    "v0_6_github_ci": "PASS_81_TESTS_RUN_44908523523",
+    "v0_6_independent_review": "PENDING",
+    "v0_6_merged_main_sha": "6748cfbf30c43ecf1958797f02776f0bbf02fb65",
+    "v0_7_new_regression": {
+      "tests": 11,
+      "result": "LOCAL_PASS",
+      "scope": "synthetic CMS export/import and independent pinning, wrong key, corrupt package, unsafe paths/permissions, no live DB writes"
+    },
+    "v0_7_github_ci": "PENDING",
+    "v0_7_off_host_restore": "NOT_PERFORMED",
+    "v0_7_external_key_custody": "NOT_VERIFIED",
+    "v0_7_independent_review": "PENDING"
   },
   "index": {
     "type": "repository-manifest",

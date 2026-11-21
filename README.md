@@ -2,7 +2,7 @@
 
 Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
-> **v0.5 SOURCE ADOPTED IN MAIN; v0.6 LOCAL OPERATIONS REVIEW CANDIDATE:** Local-only SQLite journal with complete hash-chain checks, idempotent retries and optional bounded atomic batches. v0.6 makes first SQLite initialization safe across processes and adds verified, explicitly requested restore into a NEW private root. No CASER writer, encrypted off-device recovery, background service, agent access, or production deployment.
+> **v0.6 SOURCE ADOPTED IN MAIN; v0.7 OFFLINE ENVELOPE REVIEW CANDIDATE:** Local-only verified SQLite journal, safe cross-process startup, bounded atomic batches and isolated manual snapshot restore. v0.7 adds a human-invoked encrypted CMS transfer prototype with independently pinned digests, but real off-host recovery and key custody are NOT verified. No CASER agent grant, background service, production export, or deployment.
 
 ## Core capabilities (v0.1)
 
@@ -13,7 +13,8 @@ Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 - Fail closed on corrupted records, broken session/project bindings, incorrect head hashes, unsafe data locations and invalid event contracts.
 - Use SQLite WAL, full synchronous writes and a single transaction for each new event.
 - Opt-in Python `append_batch()` for 1–32 events in one pre-verified atomic transaction (included in v0.5 main).
-- v0.6 review candidate: bounded cross-process first-initialization lock; explicit owner-only restore into a brand-new root, never live overwrite or activation.
+- v0.6 main: bounded cross-process first-initialization lock; explicit owner-only restore into a brand-new root, never live overwrite or activation.
+- v0.7 review-only: offline CMS encrypted transfer of an existing VERIFIED snapshot. Recipient certificate and independent SHA-256 pins are mandatory; NOT authenticated encryption or a proved off-device restore.
 - Use no paid services, non-standard packages, network dependencies, or additional permanent daemons.
 
 ### Separation of responsibilities
@@ -66,7 +67,7 @@ store.append(
 )
 assert store.verify()["verdict"] == "VERIFIED_INTEGRITY"
 assert len(CasebookStore(store.root).get_session(sid)["events"]) == 2
-# Optional in v0.5 review candidate: one full audit, one atomic transaction:
+# From v0.5 main: one full audit, one atomic transaction:
 store.append_batch(
     session_id=sid,
     events=[
@@ -92,7 +93,7 @@ python3 -B -m benchmarks.append_latency --data-parent /Users/eimyna/0_EVIDENCE/V
 python3 -B -m benchmarks.append_latency --data-parent /Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK --events 160 --mode batch --batch-size 32
 ```
 
-Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. v0.6 adds cross-process concurrent cold-start and isolated restore tests. See [v0.6 local operations runbook](docs/LOCAL_OPERATIONS_V0_6.md), [v0.5 batch performance](docs/PERFORMANCE_V0_5.md), [v0.4 performance](docs/PERFORMANCE_V0_4.md), and [v0.2 recovery boundaries](docs/RELIABILITY.md). No provider WRITE/deploy/release action is exposed.
+Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. v0.6 adds cross-process concurrent cold-start and isolated restore tests. v0.7 adds synthetic recipient-certificate CMS transfer and independently pinned negative crypto recovery tests. See [v0.7 offline transfer limitations](docs/OFFLINE_RECOVERY_V0_7.md), [v0.6 local operations runbook](docs/LOCAL_OPERATIONS_V0_6.md), [v0.5 batch performance](docs/PERFORMANCE_V0_5.md), [v0.4 performance](docs/PERFORMANCE_V0_4.md), and [v0.2 recovery boundaries](docs/RELIABILITY.md). No provider WRITE/deploy/release action is exposed.
 
 ## Non-authority rule
 
@@ -102,7 +103,7 @@ CASER is a future orchestration adapter; CASER-SOURCER governs provenance and ca
 
 ## Integrity limits
 
-See [docs/INTEGRITY.md](docs/INTEGRITY.md). The local hash chain **is not cryptographically tamper-proof against an attacker who can edit the entire SQLite database and recompute all hashes**. The head hash lives in that same database; independent anchoring, external verifier identity and authenticated/encrypted backups remain future gates.
+See [docs/INTEGRITY.md](docs/INTEGRITY.md). The local hash chain **is not cryptographically tamper-proof against an attacker who can edit the entire SQLite database and recompute all hashes**. The head hash lives in that same database; independent anchoring, external verifier identity, authenticated envelope encryption and genuine off-host key custody/restoration remain future gates. The v0.7 CMS prototype provides confidentiality but is NOT AEAD without independently pinned digests.
 
 ## Index and project status
 
