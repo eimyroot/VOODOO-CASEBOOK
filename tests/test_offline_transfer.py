@@ -6,6 +6,7 @@ import hashlib
 import json
 from unittest.mock import patch as mock_patch
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -245,6 +246,78 @@ class OfflineEnvelopeTests(unittest.TestCase):
         )
         self.assertEqual(p.returncode,2)
         self.assertFalse(self.package.exists())
+
+
+    def test_verified_restore_is_published_without_staging_leftovers(self):
+        record=self.export()
+        result=self.recover(record)
+        target=self.base/"restore"
+        self.assertEqual(result["status"],"OFFLINE_DECRYPT_AND_RESTORE_VERIFIED_ISOLATED")
+        self.assertEqual(CasebookStore(target).verify()["event_count"],2)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode),0o700)
+        self.assertEqual(stat.S_IMODE((target/"casebook.sqlite3").stat().st_mode),0o600)
+        self.assertEqual(list(self.base.glob(".casebook-restore-incomplete-*")),[])
+
+    def test_wrong_head_pin_removes_only_private_staging(self):
+        record=self.export()
+        with self.assertRaisesRegex(IntegrityError,"independent pin"):
+            self.recover(record,head="f"*64)
+        self.assertFalse((self.base/"restore").exists())
+        self.assertEqual(list(self.base.glob(".casebook-restore-incomplete-*")),[])
+
+    def test_second_operator_claims_final_path_during_decryption(self):
+        record=self.export()
+        target=self.base/"restore"
+        original_verify=CasebookStore.verify
+        def intercept_verification(instance):
+            if instance.root.name.startswith(".casebook-restore-incomplete-"):
+                target.mkdir(mode=0o700)
+                (target/"sentinel").write_text("other operation owns this path")
+            return original_verify(instance)
+        with mock_patch.object(CasebookStore,"verify",intercept_verification):
+            with self.assertRaises(FileExistsError):
+                self.recover(record)
+        self.assertEqual((target/"sentinel").read_text(),"other operation owns this path")
+        self.assertEqual(list(self.base.glob(".casebook-restore-incomplete-*")),[])
+
+    def test_process_crash_after_decryption_never_publishes_final_root(self):
+        record=self.export()
+        target=self.base/"recovered-after-crash"
+        child=r'''
+import os,sys
+from pathlib import Path
+import voodoo_casebook.offline_transfer as transfer
+original=transfer._openssl
+def crash_after_complete_decrypt(*args):
+    original(*args)
+    os._exit(78)
+transfer._openssl=crash_after_complete_decrypt
+transfer.restore_encrypted_snapshot(
+    Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]),
+    expected_envelope_sha256=sys.argv[5],
+    expected_database_sha256=sys.argv[6],
+    expected_head_hash=sys.argv[7],
+    expected_recipient_cert_sha256=sys.argv[8],
+)
+'''
+        cmd=[sys.executable,"-B","-c",child,str(self.package),str(self.cert),
+             str(self.key),str(target),record["envelope_sha256"],
+             record["database_sha256"],record["head_hash"],self.cert_pin]
+        result=subprocess.run(cmd,cwd=str(Path(__file__).resolve().parents[1]),
+                              capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,78,result.stderr)
+        self.assertFalse(target.exists(),"Unverified restore became publicly selectable")
+        candidates=list(self.base.glob(".casebook-restore-incomplete-*"))
+        self.assertEqual(len(candidates),1,candidates)
+        stage=candidates[0]
+        self.assertEqual(stat.S_IMODE(stage.stat().st_mode),0o700)
+        unfinished=stage/"casebook.sqlite3"
+        self.assertTrue(unfinished.is_file())
+        self.assertEqual(stat.S_IMODE(unfinished.stat().st_mode),0o600)
+        # A force-killed process cannot guarantee physical plaintext cleanup.
+        # Operators must quarantine and remove incomplete private staging.
+        shutil.rmtree(stage)
+        self.assertEqual(self.store.verify()["event_count"],2)
 
 
 if __name__=="__main__":

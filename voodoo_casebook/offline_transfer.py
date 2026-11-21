@@ -16,11 +16,12 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
 
-from .backups import DATABASE_FILENAME, MANIFEST_NAME, _sha256, verify_backup
+from .backups import DATABASE_FILENAME, MANIFEST_NAME, _sha256, _fsync_dir, verify_backup
 from .core import CasebookStore, IntegrityError
 
 HEX_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -195,13 +196,19 @@ def restore_encrypted_snapshot(
     if _sha256(encrypted) != expected_envelope_sha256:
         raise IntegrityError("encrypted transfer differs from pinned digest")
 
-    target.mkdir(mode=0o700, exist_ok=False)
+    # Never create the requested FINAL directory before validation.
+    # SIGKILL may leave a private, distinctly named INCOMPLETE staging
+    # directory in its 0700 parent; it cannot be mistaken for verified
+    # recovery at the operator-selected target path.
+    stage = Path(tempfile.mkdtemp(
+        prefix=".casebook-restore-incomplete-", dir=str(target.parent),
+    ))
     try:
-        output = target / DATABASE_FILENAME
+        output = stage / DATABASE_FILENAME
         fd = os.open(str(output), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                      os.O_NOFOLLOW, 0o600)
         os.close(fd)
-        pinned_cert = target / ".pinned-recipient-cert.pem"
+        pinned_cert = stage / ".pinned-recipient-cert.pem"
         fd = os.open(str(pinned_cert), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                      os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "wb") as stream:
@@ -219,9 +226,20 @@ def restore_encrypted_snapshot(
 
         if _sha256(output) != expected_database_sha256:
             raise IntegrityError("decrypted snapshot differs from pinned digest")
-        report = CasebookStore(target).verify()
+        report = CasebookStore(stage).verify()
         if report["head_hash"] != expected_head_hash:
             raise IntegrityError("restored head differs from independent pin")
+        # Make verified content durable before publishing the final path.
+        with output.open("rb") as stream:
+            os.fsync(stream.fileno())
+        _fsync_dir(stage)
+        # Recheck target after the expensive decrypt/verify work. This
+        # protects ordinary concurrent operators; it is NOT a defense
+        # against a malicious process with the same UID that can race
+        # filesystem operations or control the destination directory.
+        _safe_parent(target)
+        stage.rename(target)
+        _fsync_dir(target.parent)
         return {
             "status": "OFFLINE_DECRYPT_AND_RESTORE_VERIFIED_ISOLATED",
             "restore_root": str(target),
@@ -232,7 +250,10 @@ def restore_encrypted_snapshot(
             "caller_key_custody_unverified": True,
         }
     except Exception:
-        shutil.rmtree(str(target))
+        # Only the newly-created, incomplete STAGING directory is removed.
+        # Never delete the destination path if another process created it.
+        if stage.exists():
+            shutil.rmtree(str(stage))
         raise
 
 

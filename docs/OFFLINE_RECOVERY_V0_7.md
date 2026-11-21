@@ -18,7 +18,9 @@ A preexisting fully verified backup is the only export source. The tool does not
 4. Independently preserve the reported envelope_sha256, database_sha256 and head_hash. The values must NOT be trusted solely from an accompanying manifest on the same media.
 5. Transfer the encrypted CMS to independent off-host storage and verify its bytes there.
 6. On the recovery host, invoke decryption with the securely stored private key and the independently pinned values. The destination parent must exist and be owner-only; the destination itself must not yet exist.
-7. Verify the restored SQLite schema, trigger set, event sequence and hash chain. Never switch a running service to the recovery path automatically.
+7. Decrypt to a new **private staging directory**, not to the final restore path. Verify plaintext SHA-256 and the complete SQLite journal, fsync the validated result, and only then rename the staging directory to the requested target. Never switch a running service to the recovery path automatically.
+8. A forced process kill (SIGKILL or power loss) may leave private **plaintext** in a directory named `.casebook-restore-incomplete-*` beneath the owner-only destination parent. It must not be mistaken for a valid restore. Securely quarantine and inspect any such leftover before separately authorized cleanup; do not delete unknown user directories or claim secure erase on SSDs.
+9. Last-moment target recheck reduces accidental conflicts, but directory rename is not a general protection against a malicious process with the same UID racing filesystem operations. See [agent isolation gate](AGENT_ISOLATION_GATE.md).
 
 From an APPROVED checkout, a human operator can invoke:
 
@@ -44,7 +46,7 @@ Do not grant agents the live database path, private decryption key, full disk ac
 
 ## Evidence and blocked claims
 
-Synthetic test fixtures exercise CMS export/decrypt, exact event identity and independently pinned certificate/digest/head values, wrong key, modified ciphertext, a valid-but-substituted certificate, source certificate replacement after preflight, bad certificate, unsafe permissions and overwrites. The source does not create a production key or export actual data.
+Synthetic test fixtures exercise CMS export/decrypt, exact event identity and independently pinned certificate/digest/head values, wrong key, modified ciphertext, a valid-but-substituted certificate, source certificate replacement after preflight, bad certificate, unsafe permissions and overwrites. Additional subprocess tests force exit after successful decrypt but before verification: the **final target remains absent**, while only private incomplete staging may remain. Synthetic same-UID destination collision is denied without overwriting the other operator's directory. The source does not create a production key or export actual data.
 
 Still BLOCKED: actual off-host copy and decrypt, independent key custody, private-key passphrase/hardware interface, signed external anchor, AEAD envelope, same-UID isolation, production recovery metrics, formal security approval and deployment authorization.
 

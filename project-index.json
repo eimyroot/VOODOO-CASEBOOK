@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.7-cert-pin",
-    "base": "review/v0.7-offline-envelope@c2506d54766270034f7796c30406d5f704a6b5e8",
-    "status": "LOCAL_SYNTHETIC_SECURITY_TEST_PASS_PUBLISH_AND_INDEPENDENT_REVIEW_PENDING",
-    "version": "0.7.0rc2"
+    "branch": "review/v0.7-atomic-restore",
+    "base": "review/v0.7-cert-pin@efa3f54bd5786df42b58d35f98b9962a5a2390b4",
+    "status": "LOCAL_SYNTHETIC_TEST_PASS_REVIEW_AND_CI_PENDING",
+    "version": "0.7.0rc3"
   },
   "source_paths": [
     "README.md",
@@ -90,7 +90,11 @@
     "cert_pin_approval_verified_offhost": false,
     "same_uid_agent_isolation_verified": false,
     "agent_os_identity_change_performed": false,
-    "agent_broker_active": false
+    "agent_broker_active": false,
+    "offline_restore_staged_before_final_publish": true,
+    "interrupted_restore_final_path_preverified": true,
+    "unverified_plaintext_staging_possible_on_process_crash": true,
+    "atomic_no_clobber_same_uid_proven": false
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -208,7 +212,16 @@
     },
     "v0_7_hardening_github_ci": "NOT_RUN_YET",
     "v0_7_hardening_formal_review": "PENDING",
-    "agent_isolation_plan": "SOURCE_ONLY_NO_OS_CHANGES"
+    "agent_isolation_plan": "SOURCE_ONLY_NO_OS_CHANGES",
+    "v0_7_atomic_restore_local": {
+      "test_case": "SIGKILL-like process termination after decrypt before verification",
+      "result": "LOCAL_PASS_20_CMS_TESTS",
+      "new_tests": 4,
+      "expected_total_suite": 101,
+      "notes": "Private incomplete plaintext staging may survive force-kill; operator cleanup required; not cross-device DR"
+    },
+    "v0_7_atomic_restore_ci": "PENDING",
+    "v0_7_atomic_restore_independent_security_review": "PENDING"
   },
   "index": {
     "type": "repository-manifest",
