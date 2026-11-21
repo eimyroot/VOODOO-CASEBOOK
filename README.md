@@ -2,7 +2,7 @@
 
 Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
-> **v0.3 SOURCE ADOPTED IN MAIN; v0.4 PERFORMANCE REVIEW CANDIDATE:** Local-only SQLite event memory, retry-safe idempotency, crash-recovery regression tests, and verified on-demand snapshots. The v0.4 candidate removes a redundant pre-write full integrity scan but still verifies the entire history before every write. Not a CASER execution adapter, encrypted/off-device disaster recovery, or production release.
+> **v0.3 SOURCE ADOPTED IN MAIN; v0.4 AND v0.5 ARE STACKED PERFORMANCE REVIEW CANDIDATES:** Local-only SQLite event memory, retry-safe idempotency, crash-recovery regression tests, and verified on-demand snapshots. v0.4 removes a redundant audit per write; v0.5 adds opt-in atomic batches with a complete prior-history audit per batch. Not a CASER execution adapter, encrypted/off-device disaster recovery, or production release.
 
 ## Core capabilities (v0.1)
 
@@ -12,6 +12,7 @@ Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 - Keep a global monotonically sequenced event chain, SHA-256 over canonical JSON, an anchored head **inside the same database**, and append-only SQL triggers.
 - Fail closed on corrupted records, broken session/project bindings, incorrect head hashes, unsafe data locations and invalid event contracts.
 - Use SQLite WAL, full synchronous writes and a single transaction for each new event.
+- Opt-in Python `append_batch()` for 1–32 events in one pre-verified atomic transaction (v0.5 candidate only).
 - Use no paid services, non-standard packages, network dependencies, or additional permanent daemons.
 
 ### Separation of responsibilities
@@ -64,6 +65,14 @@ store.append(
 )
 assert store.verify()["verdict"] == "VERIFIED_INTEGRITY"
 assert len(CasebookStore(store.root).get_session(sid)["events"]) == 2
+# Optional in v0.5 review candidate: one full audit, one atomic transaction:
+store.append_batch(
+    session_id=sid,
+    events=[
+        {"type": "TODO", "summary": "one", "event_id": "cbk_unique_one"},
+        {"type": "RESULT", "summary": "two", "event_id": "cbk_unique_two"},
+    ],
+)
 ```
 
 `VERIFIED_INTEGRITY` attests only **internal journal structure**, not the truth of notes, evidence authenticity, cross-machine durability, or an independently signed verifier receipt.
@@ -79,9 +88,10 @@ Synthetic benchmark (explicit private evidence parent; never use a real database
 
 ```sh
 python3 -B -m benchmarks.append_latency --data-parent /Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK --events 160
+python3 -B -m benchmarks.append_latency --data-parent /Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK --events 160 --mode batch --batch-size 32
 ```
 
-Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. v0.4 adds one-scan-per-write assertions and negative historical-tamper cases. See [v0.4 performance measurement](docs/PERFORMANCE_V0_4.md) and [v0.2 recovery boundaries](docs/RELIABILITY.md). No provider WRITE/deploy/release action is exposed.
+Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. v0.4 adds one-scan-per-write assertions and negative historical-tamper cases. See [v0.5 atomic-batch performance and boundaries](docs/PERFORMANCE_V0_5.md), [v0.4 performance measurement](docs/PERFORMANCE_V0_4.md) and [v0.2 recovery boundaries](docs/RELIABILITY.md). No provider WRITE/deploy/release action is exposed.
 
 ## Non-authority rule
 

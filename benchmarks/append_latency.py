@@ -19,9 +19,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="CASEBOOK isolated synthetic append benchmark")
     parser.add_argument("--data-parent", type=Path, required=True)
     parser.add_argument("--events", type=int, default=160)
+    parser.add_argument("--mode", choices=("single", "batch"), default="single")
+    parser.add_argument("--batch-size", type=int, default=32)
     args = parser.parse_args()
     if not 32 <= args.events <= 5000:
         parser.error("--events must be between 32 and 5000")
+    if not 1 <= args.batch_size <= 32:
+        parser.error("--batch-size must be between 1 and 32")
     parent = args.data_parent.expanduser()
     if (
         not parent.is_absolute() or ".." in parent.parts
@@ -34,12 +38,24 @@ def main() -> int:
         store = CasebookStore(Path(td) / "private")
         sid = store.start_session(project="synthetic-benchmark", goal="Measure exact verified writes")
         durations = []
-        for i in range(args.events):
+        for start in range(0, args.events, 1 if args.mode == "single" else args.batch_size):
+            end = min(args.events, start + (1 if args.mode == "single" else args.batch_size))
             started = time.perf_counter()
-            store.append(
-                session_id=sid, event_type="TODO", summary="synthetic {}".format(i),
-                event_id="cbk_bench_{}".format(i),
-            )
+            if args.mode == "single":
+                store.append(
+                    session_id=sid, event_type="TODO",
+                    summary="synthetic {}".format(start),
+                    event_id="cbk_bench_{}".format(start),
+                )
+            else:
+                store.append_batch(session_id=sid, events=[
+                    {
+                        "type": "TODO",
+                        "summary": "synthetic {}".format(i),
+                        "event_id": "cbk_bench_{}".format(i),
+                    }
+                    for i in range(start, end)
+                ])
             durations.append(1000 * (time.perf_counter() - started))
         verified = store.verify()
         if verified["event_count"] != args.events + 1:
@@ -50,6 +66,10 @@ def main() -> int:
             "platform": platform.platform(),
             "synthetic": True,
             "events_written": args.events,
+            "write_mode": args.mode,
+            "batch_size": args.batch_size if args.mode == "batch" else 1,
+            "write_operations": len(durations),
+            "average_ms_per_event": round(sum(durations) / args.events, 3),
             "events_total": verified["event_count"],
             "median_first_20_ms": round(statistics.median(durations[:20]), 3),
             "median_last_20_ms": round(statistics.median(durations[-20:]), 3),

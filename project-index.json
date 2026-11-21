@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.4-single-verify",
-    "base": "main@710f37129712cb567e97bd7052e8475b3a94c895",
-    "status": "LOCAL_TESTED_AWAITING_GITHUB_CI_AND_INDEPENDENT_REVIEW",
-    "version": "0.4.0rc1"
+    "branch": "review/v0.5-atomic-batch",
+    "base": "review/v0.4-single-verify@cbcda675fa4d435e7776cea8a2712aadc6290b73",
+    "status": "LOCAL_CANDIDATE_BENCHMARKED_AWAITING_GITHUB_CI_AND_INDEPENDENT_REVIEW",
+    "version": "0.5.0rc1"
   },
   "source_paths": [
     "README.md",
@@ -29,7 +29,9 @@
     "docs/PERFORMANCE_V0_4.md",
     "tests/test_single_verify.py",
     "benchmarks/append_latency.py",
-    ".github/workflows/casebook-ci.yml"
+    ".github/workflows/casebook-ci.yml",
+    "docs/PERFORMANCE_V0_5.md",
+    "tests/test_atomic_batch.py"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -39,7 +41,7 @@
     "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "SOURCE_V0_3_MERGED_V0_4_LOCAL_REVIEW_CANDIDATE",
+    "status": "SOURCE_V0_3_MERGED_V0_4_AND_V0_5_STACKED_REVIEW_CANDIDATES",
     "persistent_events": true,
     "sqlite": true,
     "hash_chain": true,
@@ -60,7 +62,10 @@
     "full_chain_scans_per_existing_store_write": 1,
     "incremental_checkpoint_enabled": false,
     "full_history_validation_still_linear": true,
-    "production_release_verified": false
+    "production_release_verified": false,
+    "atomic_batch_max_events": 32,
+    "atomic_batch_full_prior_audit_once_per_transaction": true,
+    "atomic_batch_opt_in": true
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -107,8 +112,30 @@
       "speedup_factor": 1.292,
       "limitations": "one sequential local comparison, not production/10k+"
     },
-    "v0_4_github_ci": "NOT_YET_RUN",
-    "v0_4_independent_review": "NOT_YET_APPROVED"
+    "v0_4_github_ci": "PASS_51_TESTS_44845949585",
+    "v0_4_independent_review": "NOT_YET_APPROVED",
+    "v0_5_new_regression": {
+      "tests": 13,
+      "result": "LOCAL_PASS_PUBLISH_PENDING",
+      "python": "3.9.6",
+      "exact_full_audit_per_batch": true,
+      "atomic_rollback_checked": true
+    },
+    "v0_5_synthetic_benchmark": {
+      "batch_size": 32,
+      "event_count": 160,
+      "pair_1_single_ms": 5927.471,
+      "pair_1_batch_ms": 175.559,
+      "pair_2_single_ms": 11679.978,
+      "pair_2_batch_ms": 173.842,
+      "paired_speedup_x": [
+        33.763,
+        67.187
+      ],
+      "limitations": "two paired local synthetic comparisons, different request atomicity, not production load"
+    },
+    "v0_5_github_ci": "NOT_YET_RUN",
+    "v0_5_independent_review": "NOT_YET_APPROVED"
   },
   "index": {
     "type": "repository-manifest",
