@@ -5,29 +5,85 @@
     "provider": "github",
     "repository": "eimyroot/VOODOO-CASEBOOK",
     "branch": "main",
-    "source_scope": "tracked-code-schemas-tests-public-safe-docs"
+    "source_scope": "tracked-code-tests-public-safe-docs"
+  },
+  "review_candidate": {
+    "branch": "review/v0.2-reliability",
+    "base": "review/v0.1-persistent-core",
+    "status": "LOCAL_TESTED_AWAITING_INDEPENDENT_REVIEW",
+    "version": "0.2.0"
   },
   "source_paths": [
     "README.md",
     ".gitignore",
-    "project-index.json"
+    "project-index.json",
+    "docs/INTEGRITY.md",
+    "voodoo_casebook/__init__.py",
+    "voodoo_casebook/__main__.py",
+    "voodoo_casebook/cli.py",
+    "voodoo_casebook/core.py",
+    "tests/test_casebook.py",
+    "docs/RELIABILITY.md",
+    "voodoo_casebook/backups.py",
+    "tests/test_reliability.py"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
-    "lifecycle": "NOT_CREATED",
     "in_git": false,
-    "access": "local-governed"
+    "access": "local-owner-only",
+    "database_filename": "casebook.sqlite3",
+    "runtime_status": "LOCAL_SYNTHETIC_ACCEPTANCE_DATA_ONLY"
   },
   "runtime": {
-    "status": "NOT_IMPLEMENTED",
-    "persistent_events": false,
-    "sqlite": false,
+    "status": "LOCAL_V0_2_REVIEW_CANDIDATE",
+    "persistent_events": true,
+    "sqlite": true,
+    "hash_chain": true,
+    "independent_verifier": false,
     "agent_bridge": false,
-    "independent_verifier": false
+    "external_anchor": false,
+    "encrypted_backups": false,
+    "idempotent_session_ids": true,
+    "idempotent_event_ids": true,
+    "requires_explicit_data_root": true,
+    "immutable_trigger_check": true,
+    "backup_on_demand": true,
+    "backup_verify": true,
+    "scheduled_backup": false,
+    "off_device_backup": false,
+    "backup_manifest_signed": false
+  },
+  "acceptance": {
+    "local_tests_2026_11_20": {
+      "tests": 24,
+      "result": "PASS",
+      "python": "3.9.6",
+      "separate_process_restart": true,
+      "online_backup_restore": true
+    },
+    "real_evidence_root_smoke": "LOCAL_PASS_VERIFIED_WITH_ABSOLUTE_PATH",
+    "github_review": "PENDING",
+    "independent_raw_sqlite_check": {
+      "status": "PASS",
+      "events": 2,
+      "head_sha256": "312a42ed1e668ce817ca9bda8b46a67718479243f85715f250b6c7d33ee8ba31",
+      "permissions": "0700/0600"
+    },
+    "local_tests_2026_11_21": {
+      "tests": 43,
+      "result": "PASS",
+      "python": "3.9.6",
+      "crash_before_commit": true,
+      "commit_ack_lost_idempotent_retry": true,
+      "backup_snapshot_restore": true,
+      "backup_tamper_negative": true,
+      "missing_trigger_negative": true
+    },
+    "v0_2_github_review": "PENDING",
+    "v0_2_production_stability": "NOT_VERIFIED"
   },
   "index": {
     "type": "repository-manifest",
-    "indexable": true,
     "github_code_search_index_verified": false,
     "casebook_content_indexed": false,
     "sourcer_persistence_verified": false
@@ -37,7 +93,6 @@
     "casebook": "no-execution-or-approval-authority",
     "notes": "not-canonical-without-independent-adoption-and-verification"
   },
-  "next_acceptance": "append-session-event/restart-readback/integrity-negative-tests",
   "safety": {
     "no_secrets_or_personal_data_in_git": true,
     "no_production_effects": true,
