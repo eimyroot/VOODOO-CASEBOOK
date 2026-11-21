@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -74,8 +75,27 @@ def _openssl(*arguments: str) -> None:
         raise IntegrityError("offline CMS encryption/decryption failed")
 
 
+def _pinned_certificate(path: Path, expected_sha256: str) -> tuple[Path, bytes]:
+    """Require a separately trusted certificate pin BEFORE any export/import.
+
+    A digest supplied by an attacker alongside a substituted certificate is
+    not a meaningful trust anchor. Out-of-band operator verification is a
+    required precondition and is not provided by this API.
+    """
+    if not isinstance(expected_sha256, str) or not HEX_SHA256.fullmatch(expected_sha256):
+        raise ValueError("operator-pinned recipient certificate SHA-256 required")
+    certificate = _safe_file(path)
+    content = certificate.read_bytes()
+    if not 100 <= len(content) <= 65536:
+        raise ValueError("recipient certificate has invalid size")
+    if not hmac.compare_digest(hashlib.sha256(content).hexdigest(), expected_sha256):
+        raise IntegrityError("recipient certificate does not match independently approved fingerprint")
+    return certificate, content
+
+
 def export_encrypted_snapshot(
     store: CasebookStore, backup_id: str, recipient_cert: Path, destination: Path,
+    *, expected_recipient_cert_sha256: str,
 ) -> dict[str, Any]:
     """Encrypt a *verified existing* snapshot to a brand-new private CMS file.
 
@@ -83,10 +103,9 @@ def export_encrypted_snapshot(
     existing verified backup, never a direct copy of a live WAL database.
     """
     source_report = verify_backup(store, backup_id)
-    certificate = _safe_file(recipient_cert)
-    cert_content = certificate.read_bytes()
-    if not 100 <= len(cert_content) <= 65536:
-        raise ValueError("recipient certificate has invalid size")
+    certificate, cert_content = _pinned_certificate(
+        recipient_cert, expected_recipient_cert_sha256,
+    )
     destination = _safe_parent(destination)
     if destination == store.root or store.root in destination.parents:
         raise ValueError("encrypted export must be outside active evidence root")
@@ -99,13 +118,22 @@ def export_encrypted_snapshot(
     if not hasattr(os, "O_NOFOLLOW"):
         raise OSError("O_NOFOLLOW required for offline export")
     temporary = destination.parent / (".cbk-cms-" + uuid.uuid4().hex + ".tmp")
-    handle = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
-                     os.O_NOFOLLOW, 0o600)
-    os.close(handle)
+    pinned_cert = destination.parent / (".cbk-recipient-" + uuid.uuid4().hex + ".pem")
     try:
+        handle = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW, 0o600)
+        os.close(handle)
+        handle = os.open(str(pinned_cert), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW, 0o600)
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(cert_content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # OpenSSL reads an owner-only frozen COPY of the pinned bytes, not the
+        # original certificate path that could be swapped after preflight.
         _openssl(
             "-encrypt", "-binary", "-aes256", "-in", str(source),
-            "-out", str(temporary), "-outform", "DER", str(certificate),
+            "-out", str(temporary), "-outform", "DER", str(pinned_cert),
         )
         if _sha256(source) != source_digest:
             raise IntegrityError("backup snapshot changed during encrypted export")
@@ -140,12 +168,14 @@ def export_encrypted_snapshot(
     finally:
         if temporary.exists():
             temporary.unlink()
+        if pinned_cert.exists():
+            pinned_cert.unlink()
 
 
 def restore_encrypted_snapshot(
     envelope: Path, recipient_cert: Path, private_key: Path, destination: Path,
     *, expected_envelope_sha256: str, expected_database_sha256: str,
-    expected_head_hash: str,
+    expected_head_hash: str, expected_recipient_cert_sha256: str,
 ) -> dict[str, Any]:
     """Decrypt and verify to a NEW private root, without changing live data.
 
@@ -157,7 +187,9 @@ def restore_encrypted_snapshot(
         if not isinstance(value, str) or not HEX_SHA256.fullmatch(value):
             raise ValueError("required independently pinned SHA-256 is invalid")
     encrypted = _safe_file(envelope)
-    certificate = _safe_file(recipient_cert)
+    certificate, cert_content = _pinned_certificate(
+        recipient_cert, expected_recipient_cert_sha256,
+    )
     key = _safe_file(private_key, secret=True)
     target = _safe_parent(destination)
     if _sha256(encrypted) != expected_envelope_sha256:
@@ -169,11 +201,22 @@ def restore_encrypted_snapshot(
         fd = os.open(str(output), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                      os.O_NOFOLLOW, 0o600)
         os.close(fd)
-        _openssl(
-            "-decrypt", "-binary", "-inform", "DER", "-in", str(encrypted),
-            "-recip", str(certificate), "-inkey", str(key),
-            "-out", str(output),
-        )
+        pinned_cert = target / ".pinned-recipient-cert.pem"
+        fd = os.open(str(pinned_cert), os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                     os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(cert_content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            _openssl(
+                "-decrypt", "-binary", "-inform", "DER", "-in", str(encrypted),
+                "-recip", str(pinned_cert), "-inkey", str(key),
+                "-out", str(output),
+            )
+        finally:
+            pinned_cert.unlink()
+
         if _sha256(output) != expected_database_sha256:
             raise IntegrityError("decrypted snapshot differs from pinned digest")
         report = CasebookStore(target).verify()
@@ -203,10 +246,12 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--data-root", type=Path, required=True)
     export.add_argument("--backup-id", required=True)
     export.add_argument("--recipient-cert", type=Path, required=True)
+    export.add_argument("--expected-recipient-cert-sha256", required=True)
     export.add_argument("--to", type=Path, required=True)
     restore = commands.add_parser("restore", help="Decrypt to a NEW private root only")
     restore.add_argument("--package", type=Path, required=True)
     restore.add_argument("--recipient-cert", type=Path, required=True)
+    restore.add_argument("--expected-recipient-cert-sha256", required=True)
     restore.add_argument("--private-key", type=Path, required=True)
     restore.add_argument("--to", type=Path, required=True)
     restore.add_argument("--expected-package-sha256", required=True)
@@ -218,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             record = export_encrypted_snapshot(
                 CasebookStore(args.data_root), args.backup_id,
                 args.recipient_cert, args.to,
+                expected_recipient_cert_sha256=args.expected_recipient_cert_sha256,
             )
         else:
             record = restore_encrypted_snapshot(
@@ -226,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
                 expected_envelope_sha256=args.expected_package_sha256,
                 expected_database_sha256=args.expected_database_sha256,
                 expected_head_hash=args.expected_head_hash,
+                expected_recipient_cert_sha256=args.expected_recipient_cert_sha256,
             )
     except (ValueError, LookupError, IntegrityError, PermissionError,
             OSError, subprocess.SubprocessError) as exc:

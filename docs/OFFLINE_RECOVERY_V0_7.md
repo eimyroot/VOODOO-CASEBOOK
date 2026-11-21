@@ -8,12 +8,12 @@ The canonical project README, code and tests are the actual state. VOODOO OS Evo
 
 The VoodooBook provides LibreSSL 3.3.6 via /usr/bin/openssl. age, GPG and Python cryptography were absent at inspection. This candidate uses CMS EnvelopedData with AES-256-CBC and recipient X.509 certificate; this is **encryption, NOT authenticated encryption**. Do not claim integrity or authenticity from the CMS envelope alone.
 
-A preexisting fully verified backup is the only export source. The tool does not copy a live WAL SQLite database. The private key never enters the export process. The certificate must be validated independently by the operator. Both ciphertext and plaintext SHA-256 plus CASEBOOK head hash must be retained separately in a trusted channel. Metadata shipped with the ciphertext is not independently trusted.
+A preexisting fully verified backup is the only export source. The tool does not copy a live WAL SQLite database. The private key never enters the export process. The certificate **must be validated independently and its exact SHA-256 PIN supplied BEFORE encryption**. The operator must obtain that pin through a separate trusted channel; a pin printed by a substituted certificate is not authorization. The implementation then uses a temporary owner-only copy of the pinned certificate bytes during CMS operations to reduce post-check substitution risk. Both ciphertext and plaintext SHA-256 plus CASEBOOK head hash must be retained separately in a trusted channel. Metadata shipped with the ciphertext is not independently trusted.
 
 ## Operator workflow (after source acceptance only)
 
 1. Verify existing CASEBOOK local snapshot and backup ID.
-2. Authenticate the public recipient certificate and independently record its fingerprint. Keep the private key under control of the separate recovery operator/host.
+2. Authenticate the public recipient certificate and independently record its SHA-256 **before export**. Keep the private key under control of the separate recovery operator/host.
 3. Export only the named verified snapshot to a brand-new owner-only encrypted CMS package outside 0_DEV and the active data root.
 4. Independently preserve the reported envelope_sha256, database_sha256 and head_hash. The values must NOT be trusted solely from an accompanying manifest on the same media.
 5. Transfer the encrypted CMS to independent off-host storage and verify its bytes there.
@@ -22,11 +22,11 @@ A preexisting fully verified backup is the only export source. The tool does not
 
 From an APPROVED checkout, a human operator can invoke:
 
-    python3 -B -m voodoo_casebook.offline_transfer export --data-root /ABS/CASEBOOK-DATA --backup-id VERIFIED_ID --recipient-cert /ABS/RECIPIENT-PUBLIC.pem --to /ABS/PRIVATE-TRANSFER/CASEBOOK.cms
+    python3 -B -m voodoo_casebook.offline_transfer export --data-root /ABS/CASEBOOK-DATA --backup-id VERIFIED_ID --recipient-cert /ABS/RECIPIENT-PUBLIC.pem --expected-recipient-cert-sha256 64_HEX_PRE_APPROVED_CERT_PIN --to /ABS/PRIVATE-TRANSFER/CASEBOOK.cms
 
 A recovery operator uses an independent machine and an operator-held private key:
 
-    python3 -B -m voodoo_casebook.offline_transfer restore --package /ABS/PRIVATE-TRANSFER/CASEBOOK.cms --recipient-cert /ABS/RECIPIENT-PUBLIC.pem --private-key /ABS/RECOVERY-KEY.pem --to /ABS/PRIVATE-RECOVERY/RESTORED-NEW --expected-package-sha256 64_HEX_PIN --expected-database-sha256 64_HEX_PIN --expected-head-hash 64_HEX_PIN
+    python3 -B -m voodoo_casebook.offline_transfer restore --package /ABS/PRIVATE-TRANSFER/CASEBOOK.cms --recipient-cert /ABS/RECIPIENT-PUBLIC.pem --expected-recipient-cert-sha256 64_HEX_PRE_APPROVED_CERT_PIN --private-key /ABS/RECOVERY-KEY.pem --to /ABS/PRIVATE-RECOVERY/RESTORED-NEW --expected-package-sha256 64_HEX_PIN --expected-database-sha256 64_HEX_PIN --expected-head-hash 64_HEX_PIN
 
 The current test interface requires a readable owner-only private key file. It does not implement password-encrypted private-key entry, hardware tokens, key rotation, certificate issuance or secure key custody. Never put a production key in ChatGPT, GitHub, the source repository or agent-writable paths. A legitimate off-host recovery receipt requires a separate verified device and independently available key, which is NOT done here.
 
@@ -44,7 +44,7 @@ Do not grant agents the live database path, private decryption key, full disk ac
 
 ## Evidence and blocked claims
 
-Synthetic test fixtures exercise CMS export/decrypt, exact event identity and independent digest/head pins, wrong key, modified ciphertext, bad certificate, unsafe permissions and overwrites. The source does not create a production key or export actual data.
+Synthetic test fixtures exercise CMS export/decrypt, exact event identity and independently pinned certificate/digest/head values, wrong key, modified ciphertext, a valid-but-substituted certificate, source certificate replacement after preflight, bad certificate, unsafe permissions and overwrites. The source does not create a production key or export actual data.
 
 Still BLOCKED: actual off-host copy and decrypt, independent key custody, private-key passphrase/hardware interface, signed external anchor, AEAD envelope, same-UID isolation, production recovery metrics, formal security approval and deployment authorization.
 

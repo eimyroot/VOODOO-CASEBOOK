@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from unittest.mock import patch as mock_patch
 import os
 import stat
 import subprocess
@@ -44,11 +45,13 @@ class OfflineEnvelopeTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, "OpenSSL synthetic fixture failed")
         self.key.chmod(0o600)
+        self.cert_pin = hashlib.sha256(self.cert.read_bytes()).hexdigest()
         self.package = self.base / "transfer.cms"
 
     def export(self):
         return export_encrypted_snapshot(
             self.store, self.snapshot["backup_id"], self.cert, self.package,
+            expected_recipient_cert_sha256=self.cert_pin,
         )
 
     def recover(self, receipt, *, target=None, key=None, cert=None,
@@ -59,6 +62,7 @@ class OfflineEnvelopeTests(unittest.TestCase):
             expected_envelope_sha256=ciphertext_digest or receipt["envelope_sha256"],
             expected_database_sha256=plaintext_digest or receipt["database_sha256"],
             expected_head_hash=head or receipt["head_hash"],
+            expected_recipient_cert_sha256=self.cert_pin,
         )
 
     def test_synthetic_encrypt_and_restored_chain_matches(self):
@@ -152,7 +156,9 @@ class OfflineEnvelopeTests(unittest.TestCase):
             [sys.executable,"-B","-m","voodoo_casebook.offline_transfer","export",
              "--data-root",str(self.store.root),
              "--backup-id",self.snapshot["backup_id"],
-             "--recipient-cert",str(self.cert),"--to",str(self.package)],
+             "--recipient-cert",str(self.cert),
+             "--expected-recipient-cert-sha256",self.cert_pin,
+             "--to",str(self.package)],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,text=True,timeout=12,
         )
@@ -162,6 +168,7 @@ class OfflineEnvelopeTests(unittest.TestCase):
         import_args=[
             sys.executable,"-B","-m","voodoo_casebook.offline_transfer","restore",
             "--package",str(self.package),"--recipient-cert",str(self.cert),
+            "--expected-recipient-cert-sha256",self.cert_pin,
             "--private-key",str(self.key),"--to",str(target),
             "--expected-package-sha256",record["envelope_sha256"],
             "--expected-database-sha256",record["database_sha256"],
@@ -173,6 +180,71 @@ class OfflineEnvelopeTests(unittest.TestCase):
         self.assertEqual(restored.returncode,0,restored.stderr+restored.stdout)
         self.assertEqual(json.loads(restored.stdout)["event_count"],2)
         self.assertEqual(self.store.verify()["event_count"],2)
+
+
+    def test_export_rejects_substituted_but_valid_recipient_certificate(self):
+        original_pin = self.cert_pin
+        different_cert = self.base / "other-recipient-cert.pem"
+        different_key = self.base / "other-recipient-key.pem"
+        result = subprocess.run(
+            ["/usr/bin/openssl","req","-new","-x509","-newkey","rsa:2048",
+             "-nodes","-keyout",str(different_key),"-out",str(different_cert),
+             "-subj","/CN=DIFFERENT-RECIPIENT","-days","1"],
+            capture_output=True,text=True,timeout=9,
+        )
+        self.assertEqual(result.returncode,0)
+        with self.assertRaisesRegex(IntegrityError,"independently approved fingerprint"):
+            export_encrypted_snapshot(
+                self.store,self.snapshot["backup_id"],different_cert,
+                self.package,expected_recipient_cert_sha256=original_pin,
+            )
+        self.assertFalse(self.package.exists())
+
+    def test_restore_rejects_changed_certificate_prior_to_plaintext_file(self):
+        record=self.export()
+        self.cert.write_bytes(self.cert.read_bytes()+b"\n# swapped by synthetic adversary\n")
+        with self.assertRaisesRegex(IntegrityError,"independently approved fingerprint"):
+            self.recover(record)
+        self.assertFalse((self.base/"restore").exists())
+
+    def test_export_requires_valid_independent_pin(self):
+        with self.assertRaisesRegex(ValueError,"operator-pinned"):
+            export_encrypted_snapshot(
+                self.store,self.snapshot["backup_id"],self.cert,
+                self.package,expected_recipient_cert_sha256="not-a-valid-sha",
+            )
+        self.assertFalse(self.package.exists())
+
+    def test_certificate_replaced_after_preflight_cannot_redirect_encryption(self):
+        from voodoo_casebook import offline_transfer as transfer
+        saved=self.cert.read_bytes()
+        old=transfer._openssl
+        observed={"invoked":False}
+        def swap_then_encrypt(*args):
+            observed["invoked"]=True
+            # The attacker changes the ORIGINAL path after our preflight.
+            self.cert.write_bytes(b"substituted certificate with invalid contents")
+            return old(*args)
+        with mock_patch.object(transfer,"_openssl",swap_then_encrypt):
+            record=self.export()
+        self.assertTrue(observed["invoked"])
+        self.assertEqual(record["recipient_cert_file_sha256"],self.cert_pin)
+        self.cert.write_bytes(saved)
+        restored=self.recover(record)
+        self.assertEqual(restored["event_count"],2)
+        self.assertEqual(restored["head_hash"],record["head_hash"])
+
+    def test_cli_requires_explicit_recipient_pin(self):
+        p=subprocess.run(
+            [sys.executable,"-B","-m","voodoo_casebook.offline_transfer",
+             "export","--data-root",str(self.store.root),
+             "--backup-id",self.snapshot["backup_id"],
+             "--recipient-cert",str(self.cert),"--to",str(self.package)],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            capture_output=True,text=True,timeout=12,
+        )
+        self.assertEqual(p.returncode,2)
+        self.assertFalse(self.package.exists())
 
 
 if __name__=="__main__":

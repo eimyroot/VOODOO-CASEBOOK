@@ -8,10 +8,10 @@
     "source_scope": "tracked-code-tests-public-safe-docs"
   },
   "review_candidate": {
-    "branch": "review/v0.7-offline-envelope",
-    "base": "main@6748cfbf30c43ecf1958797f02776f0bbf02fb65",
-    "status": "LOCAL_SYNTHETIC_TESTED_REVIEW_AND_CI_PENDING",
-    "version": "0.7.0rc1"
+    "branch": "review/v0.7-cert-pin",
+    "base": "review/v0.7-offline-envelope@c2506d54766270034f7796c30406d5f704a6b5e8",
+    "status": "LOCAL_SYNTHETIC_SECURITY_TEST_PASS_PUBLISH_AND_INDEPENDENT_REVIEW_PENDING",
+    "version": "0.7.0rc2"
   },
   "source_paths": [
     "README.md",
@@ -36,7 +36,8 @@
     "tests/test_local_operations.py",
     "docs/OFFLINE_RECOVERY_V0_7.md",
     "tests/test_offline_transfer.py",
-    "voodoo_casebook/offline_transfer.py"
+    "voodoo_casebook/offline_transfer.py",
+    "docs/AGENT_ISOLATION_GATE.md"
   ],
   "private_evidence": {
     "root_hint": "~/0_EVIDENCE/VOODOO-CASEBOOK",
@@ -82,7 +83,14 @@
     "aead_crypto_proven": false,
     "authenticated_external_anchor": false,
     "off_device_restore_proven": false,
-    "operator_held_private_key_not_in_source": true
+    "operator_held_private_key_not_in_source": true,
+    "recipient_certificate_pin_required_before_export": true,
+    "recipient_certificate_pin_required_before_import": true,
+    "cert_bytes_staged_for_crypto_operation": true,
+    "cert_pin_approval_verified_offhost": false,
+    "same_uid_agent_isolation_verified": false,
+    "agent_os_identity_change_performed": false,
+    "agent_broker_active": false
   },
   "acceptance": {
     "local_tests_2026_11_20": {
@@ -188,7 +196,19 @@
     "v0_7_github_ci": "PENDING",
     "v0_7_off_host_restore": "NOT_PERFORMED",
     "v0_7_external_key_custody": "NOT_VERIFIED",
-    "v0_7_independent_review": "PENDING"
+    "v0_7_independent_review": "PENDING",
+    "v0_7_base_github_ci": "PASS_92_TESTS_44921884279",
+    "v0_7_certificate_substitution_source_finding": "REPRODUCED_IN_PARENT",
+    "v0_7_cert_pin_hardening": {
+      "result": "LOCAL_PASS_16_CMS_TESTS",
+      "new_tests": 5,
+      "tests_total_expected": 97,
+      "post_preflight_swap_staged_copy": true,
+      "independent_certificate_pin_checked": true
+    },
+    "v0_7_hardening_github_ci": "NOT_RUN_YET",
+    "v0_7_hardening_formal_review": "PENDING",
+    "agent_isolation_plan": "SOURCE_ONLY_NO_OS_CHANGES"
   },
   "index": {
     "type": "repository-manifest",
