@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -200,6 +201,56 @@ class ReliabilityTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='trigger'",
             )}
         self.assertNotIn("events_no_delete", names)
+
+    def test_verify_concurrent_commit_reads_consistent_snapshot(self) -> None:
+        # Deliberately interleave a committed WAL append between the head
+        # SELECT and the event stream SELECT of one read-only verification.
+        # Without BEGIN, each SELECT may observe a different snapshot.
+        sid = self.start()
+        from contextlib import closing
+
+        with closing(self.store._connect(write=True)) as keeper:
+            self.assertTrue((self.data / "casebook.sqlite3-wal").exists())
+            original = self.store._connect
+            observed = {}
+
+            def intercepted_connect(*, write):
+                db = original(write=write)
+                if not write:
+                    def trace(sql):
+                        if "SELECT * FROM events ORDER BY seq" not in sql or observed.get("entered"):
+                            return
+                        observed["entered"] = True
+
+                        def write_event():
+                            try:
+                                observed["event"] = CasebookStore(self.data).append(
+                                    session_id=sid, event_type="TODO",
+                                    summary="committed during verification",
+                                    event_id="cbk_concurrent_verification",
+                                )
+                            except Exception as exc:
+                                observed["error"] = repr(exc)
+
+                        thread = threading.Thread(target=write_event)
+                        thread.start()
+                        thread.join(timeout=10)
+                        observed["joined"] = not thread.is_alive()
+
+                    db.set_trace_callback(trace)
+                return db
+
+            self.store._connect = intercepted_connect
+            try:
+                snapshot = self.store.verify()
+            finally:
+                self.store._connect = original
+
+        self.assertTrue(observed.get("entered"), observed)
+        self.assertTrue(observed.get("joined"), observed)
+        self.assertNotIn("error", observed)
+        self.assertEqual(snapshot["event_count"], 1)
+        self.assertEqual(CasebookStore(self.data).verify()["event_count"], 2)
 
     def test_backup_id_traversal_fails_closed(self) -> None:
         self.start()

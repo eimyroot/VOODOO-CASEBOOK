@@ -307,6 +307,10 @@ class CasebookStore:
         """Read-only integrity verification, including SQLite physical checks and a complete hash chain."""
         with closing(self._connect(write=False)) as db:
             try:
+                # Pin the physical check, head, sessions and event stream
+                # to one read transaction. Otherwise concurrent WAL commits
+                # can produce a false corruption alarm from mixed snapshots.
+                db.execute("BEGIN")
                 return self._verify_connection(db)
             except sqlite3.DatabaseError as exc:
                 raise IntegrityError("SQLite data or schema cannot be verified") from exc
