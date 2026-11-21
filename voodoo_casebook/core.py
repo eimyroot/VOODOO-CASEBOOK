@@ -1,4 +1,4 @@
-"""VOODOO-CASEBOOK v0.1: local-only, append-only SQLite event journal.
+"""VOODOO-CASEBOOK v0.2: local-only, append-only SQLite event journal.
 
 The database is evidence, never authorization or independent proof of a claim.
 No provider/network calls, project edits, or implicit canonical promotion.
@@ -122,8 +122,11 @@ class CasebookStore:
             raise PermissionError("casebook data root must not be accessible by group or others")
         if self.database.is_symlink():
             raise ValueError("database must not be a symlink")
-        if self.database.exists() and not self.database.is_file():
-            raise ValueError("database path is not a regular file")
+        if self.database.exists():
+            if not self.database.is_file():
+                raise ValueError("database path is not a regular file")
+            if stat.S_IMODE(self.database.stat().st_mode) & 0o077:
+                raise PermissionError("database file must be owner-only (0600)")
 
     def _connect(self, *, write: bool) -> sqlite3.Connection:
         self._guard(create=write)
@@ -152,8 +155,16 @@ class CasebookStore:
         return db
 
     def initialize(self) -> None:
+        was_initialized = self.database.exists()
         with closing(self._connect(write=True)) as db:
             try:
+                if was_initialized:
+                    # An existing store must never be silently "repaired" by
+                    # CREATE IF NOT EXISTS. Fail closed on schema drift.
+                    db.execute("BEGIN IMMEDIATE")
+                    self._verify_connection(db)
+                    db.execute("COMMIT")
+                    return
                 db.executescript("""BEGIN IMMEDIATE;
 
                     CREATE TABLE IF NOT EXISTS meta (
@@ -220,6 +231,17 @@ class CasebookStore:
     def _verify_connection(db: sqlite3.Connection) -> dict[str, Any]:
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise IntegrityError("SQLite integrity_check failed")
+        expected_triggers = {
+            "events_no_update", "events_no_delete",
+            "sessions_no_update", "sessions_no_delete",
+        }
+        found_triggers = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'",
+            )
+        }
+        if not expected_triggers.issubset(found_triggers):
+            raise IntegrityError("mandatory append-only trigger is missing")
         rows = db.execute("SELECT id,schema_version,head_seq,head_hash FROM meta").fetchall()
         if len(rows) != 1 or rows[0]["id"] != 1 or rows[0]["schema_version"] != SCHEMA_VERSION:
             raise IntegrityError("unexpected or missing CASEBOOK schema metadata")
@@ -320,6 +342,19 @@ class CasebookStore:
         )
         return {**event, "event_hash": digest}
 
+    @staticmethod
+    def _stored_event(row: sqlite3.Row) -> dict[str, Any]:
+        """Reconstruct an already verified row without inventing a new timestamp."""
+        return {
+            "schema": SCHEMA, "seq": row["seq"], "event_id": row["event_id"],
+            "session_id": row["session_id"], "project": row["project"],
+            "timestamp": row["timestamp"], "type": row["type"],
+            "summary": row["summary"], "source": row["source"],
+            "evidence_refs": json.loads(row["evidence_refs_json"]),
+            "status": row["status"], "metadata": json.loads(row["metadata_json"]),
+            "prev_hash": row["prev_hash"], "event_hash": row["event_hash"],
+        }
+
     def start_session(self, *, project: str, goal: str, session_id: str | None = None) -> str:
         project = _text(project, "project", 120)
         goal = _text(goal, "goal", 8192)
@@ -329,6 +364,14 @@ class CasebookStore:
             db.execute("BEGIN IMMEDIATE")
             try:
                 self._verify_connection(db)
+                existing = db.execute(
+                    "SELECT project,goal FROM sessions WHERE session_id=?", (session_id,),
+                ).fetchone()
+                if existing is not None:
+                    if existing["project"] != project or existing["goal"] != goal:
+                        raise ValueError("session_id reused with different project or goal")
+                    db.execute("COMMIT")
+                    return session_id
                 timestamp = utc_now()
                 db.execute(
                     "INSERT INTO sessions(session_id,project,goal,created_at) VALUES(?,?,?,?)",
@@ -367,6 +410,20 @@ class CasebookStore:
                 ).fetchone()
                 if session is None:
                     raise LookupError("unknown CASEBOOK session")
+                existing = db.execute(
+                    "SELECT * FROM events WHERE event_id=?", (event_id,),
+                ).fetchone()
+                if existing is not None:
+                    recorded = self._stored_event(existing)
+                    expected = {
+                        "session_id": session_id, "project": session["project"],
+                        "type": event_type, "summary": summary, "source": source,
+                        "evidence_refs": refs, "metadata": meta, "status": status,
+                    }
+                    if any(recorded[field] != value for field, value in expected.items()):
+                        raise ValueError("event_id reused with different event content or session")
+                    db.execute("COMMIT")
+                    return recorded
                 event = self._append_transaction(
                     db, session_id=session_id, project=session["project"],
                     event_type=event_type, summary=summary, source=source,

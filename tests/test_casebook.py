@@ -84,7 +84,7 @@ class CasebookContractTests(unittest.TestCase):
         self._created()
         self._sql("DROP TRIGGER events_no_update")
         self._sql("UPDATE events SET summary='forged' WHERE seq=1")
-        with self.assertRaisesRegex(IntegrityError, "digest|GOAL"):
+        with self.assertRaisesRegex(IntegrityError, "trigger|digest|GOAL"):
             self.store.verify()
         with self.assertRaises(IntegrityError):
             self.store.append(session_id="unused", event_type="TODO", summary="blocked")
@@ -114,13 +114,13 @@ class CasebookContractTests(unittest.TestCase):
         self.store.append(session_id=sid, event_type="TODO", summary="item")
         self._sql("DROP TRIGGER events_no_update")
         self._sql("UPDATE events SET seq=7 WHERE seq=2")
-        with self.assertRaisesRegex(IntegrityError, "sequence"):
+        with self.assertRaisesRegex(IntegrityError, "trigger|sequence"):
             self.store.verify()
 
     def test_duplicate_event_id_is_rejected_without_mutation(self) -> None:
         sid = self._created()
         self.store.append(session_id=sid, event_type="TODO", summary="A", event_id="cbk_same")
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(ValueError):
             self.store.append(
                 session_id=sid, event_type="TODO", summary="B", event_id="cbk_same",
             )
@@ -128,7 +128,7 @@ class CasebookContractTests(unittest.TestCase):
 
     def test_duplicate_session_is_atomic(self) -> None:
         sid = self._created()
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(ValueError):
             self.store.start_session(
                 project="other", goal="must not overwrite", session_id=sid,
             )
@@ -204,6 +204,7 @@ class CasebookContractTests(unittest.TestCase):
     def test_corrupt_database_bytes_fail_closed(self) -> None:
         self.root.mkdir(mode=0o700)
         (self.root / DATABASE_FILENAME).write_bytes(b"Not a SQLite database")
+        (self.root / DATABASE_FILENAME).chmod(0o600)
         with self.assertRaises((IntegrityError, sqlite3.DatabaseError)):
             self.store.verify()
 
@@ -216,6 +217,7 @@ class CasebookContractTests(unittest.TestCase):
             with closing(sqlite3.connect(str(target / DATABASE_FILENAME))) as dst:
                 src.backup(dst)
                 dst.commit()
+        (target / DATABASE_FILENAME).chmod(0o600)
         restored = CasebookStore(target)
         self.assertEqual(restored.verify(), self.store.verify())
         self.assertEqual(restored.get_session(sid), self.store.get_session(sid))

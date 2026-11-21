@@ -2,7 +2,7 @@
 
 Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
-> **v0.1 REVIEW CANDIDATE:** A Python standard-library SQLite event store, CLI and negative test suite exist on the review branch. This is NOT a CASER integration, agent executor, independently witnessed evidence vault, production release, or an authorization system.
+> **v0.2 REVIEW CANDIDATE:** Local-only SQLite storage, retry-safe idempotency, crash-recovery regression tests, and verified on-demand SQLite snapshots. This is NOT a CASER integration, scheduled backup service, encrypted/off-device recovery, external verifier, or production release.
 
 ## Core capabilities (v0.1)
 
@@ -20,26 +20,31 @@ Independent, local-first, **governed session memory** for the VOODOO ecosystem.
 
 **Private evidence directory = actual session data, never committed.**
 
-Default on VoodooBook:
+Configured data root on VoodooBook:
 
 - Source: `/Users/eimyna/0_DEV/VOODOO-CASEBOOK`
 - Private database: `/Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK/casebook.sqlite3`
 
-The parent evidence directory must be owner-only (`0700`), and the database is set to `0600`. Symlinked data roots, unsafe traversal and any destination inside this source repository are rejected. The database is **plaintext**: do not record passwords, tokens or unnecessary sensitive information. Whole-device and off-device encryption/key-custody are not proved by this prototype.
+The selected evidence directory must be owner-only (`0700`), and the database is set to `0600`. Symlinked data roots, unsafe traversal and any destination inside this source repository are rejected. The database is **plaintext**: do not record passwords, tokens or unnecessary sensitive information. Whole-device and off-device encryption/key-custody are not proved by this prototype.
 
 ## Quick start
 
 From the cloned repository root (Python 3.9+):
 
 ```sh
+export VOODOO_CASEBOOK_DATA_ROOT=/Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK
 python3 -B -m voodoo_casebook init
 python3 -B -m voodoo_casebook start --project demo --goal "Resume a governed session"
-python3 -B -m voodoo_casebook append --session ses_REPLACE_WITH_RETURNED_ID --type DECISION --summary "Use local SQLite"
+python3 -B -m voodoo_casebook append --session ses_REPLACE_WITH_RETURNED_ID --type DECISION --summary "Use local SQLite" --event-id cbk_unique_replay_token
 python3 -B -m voodoo_casebook show --session ses_REPLACE_WITH_RETURNED_ID
 python3 -B -m voodoo_casebook verify
+python3 -B -m voodoo_casebook backup
+python3 -B -m voodoo_casebook backup-verify --backup-id BACKUP_ID_FROM_PREVIOUS_OUTPUT
 ```
 
-To use a separate private, owner-only directory for a controlled acceptance test, pass `--data-root /absolute/path/outside/repo` **before** the subcommand. Do not put private data under `0_DEV`.
+**v0.2 data-root rule:** An explicit absolute `--data-root` or `VOODOO_CASEBOOK_DATA_ROOT` is mandatory. The CLI never infers `Path.home()`, which was unsafe under CyberBridge's temporary HOME. To use another owner-only directory, place `--data-root /absolute/private/path` before the command. Never put private data under `0_DEV`.
+
+For an operation that may be retried after a timeout, keep the same `--event-id` **and all request fields**. An identical retry returns the original event; conflicting reuse is rejected. `start --session-id` is likewise idempotent for the exact same project and goal.
 
 Package API:
 
@@ -47,7 +52,7 @@ Package API:
 from pathlib import Path
 from voodoo_casebook import CasebookStore
 
-store = CasebookStore(Path.home() / "0_EVIDENCE" / "VOODOO-CASEBOOK")
+store = CasebookStore(Path("/Users/eimyna/0_EVIDENCE/VOODOO-CASEBOOK"))
 sid = store.start_session(project="demo", goal="Verify persistence")
 store.append(
     session_id=sid,
@@ -70,7 +75,7 @@ python3 -B -m unittest discover -s tests -v
 git diff --check
 ```
 
-Tests include separate-process reopening, independent hash recomputation, tamper/failure cases, simultaneous append operations and SQLite online-backup/restore verification. No provider WRITE/deploy/release action is exposed.
+Tests include separate-process reopening, crash-before-commit rollback, response-lost-after-commit retry, independent hash recomputation, tamper/trigger failures, simultaneous append operations, snapshot verification and backup/restore comparison. No provider WRITE/deploy/release action is exposed. See [v0.2 recovery boundaries](docs/RELIABILITY.md).
 
 ## Non-authority rule
 
@@ -80,7 +85,7 @@ CASER is a future orchestration adapter; CASER-SOURCER governs provenance and ca
 
 ## Integrity limits
 
-See [docs/INTEGRITY.md](docs/INTEGRITY.md). The v0.1 hash chain **is not cryptographically tamper-proof against an attacker who can edit the entire SQLite database and recompute all hashes**. The head hash lives in that same database; independent anchoring, external verifier identity and authenticated/encrypted backups remain future gates.
+See [docs/INTEGRITY.md](docs/INTEGRITY.md). The local hash chain **is not cryptographically tamper-proof against an attacker who can edit the entire SQLite database and recompute all hashes**. The head hash lives in that same database; independent anchoring, external verifier identity and authenticated/encrypted backups remain future gates.
 
 ## Index and project status
 
