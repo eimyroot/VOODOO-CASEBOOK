@@ -452,6 +452,101 @@ class CasebookStore:
                 raise
         return event
 
+    def append_batch(self, *, session_id: str,
+                     events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Atomically append 1–32 events to one existing session.
+
+        Every event is validated before SQLite writes. A BEGIN IMMEDIATE
+        transaction runs one *complete* integrity audit of the inherited
+        journal, then appends/replays events in input order. No other writer
+        can interleave or alter the already-verified snapshot. Failure of
+        any item rolls back the entire batch.
+
+        This is a throughput feature, not a cached-trust or O(1) verifier.
+        """
+        session_id = _text(session_id, "session_id", 128)
+        if not isinstance(events, list) or not 1 <= len(events) <= 32:
+            raise ValueError("events must be a list of 1 to 32 event objects")
+        allowed = {
+            "type", "summary", "source", "evidence_refs", "metadata",
+            "status", "event_id",
+        }
+        prepared = []
+        seen_ids: set[str] = set()
+        for request in events:
+            if not isinstance(request, dict) or not {"type", "summary"} <= request.keys():
+                raise ValueError("every batch event needs type and summary")
+            if request.keys() - allowed:
+                raise ValueError("unknown fields in batch event")
+            event_type = request["type"]
+            summary = _text(request["summary"], "summary", 8192)
+            source = request.get("source", "user")
+            status = request.get("status", "OPEN")
+            if not all(isinstance(value, str) for value in (event_type, source, status)):
+                raise ValueError("event type, source and status must be text")
+            if event_type not in EVENT_TYPES or source not in SOURCES or status not in STATUSES:
+                raise ValueError("invalid event type, source or status")
+            refs = _validate_references(request.get("evidence_refs", []))
+            meta = _validate_metadata(request.get("metadata", {}))
+            event_id = _text(request.get("event_id") or "cbk_" + uuid.uuid4().hex,
+                             "event_id", 128)
+            if event_id in seen_ids:
+                raise ValueError("event_id must be unique within one batch")
+            seen_ids.add(event_id)
+            prepared.append({
+                "type": event_type, "summary": summary, "source": source,
+                "status": status, "evidence_refs": refs, "metadata": meta,
+                "event_id": event_id,
+            })
+
+        self._ensure_initialized()
+        with closing(self._connect(write=True)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                self._verify_connection(db)
+                session = db.execute(
+                    "SELECT project FROM sessions WHERE session_id=?", (session_id,),
+                ).fetchone()
+                if session is None:
+                    raise LookupError("unknown CASEBOOK session")
+
+                results = []
+                for request in prepared:
+                    existing = db.execute(
+                        "SELECT * FROM events WHERE event_id=?",
+                        (request["event_id"],),
+                    ).fetchone()
+                    if existing is not None:
+                        recorded = self._stored_event(existing)
+                        expected = {
+                            "session_id": session_id,
+                            "project": session["project"],
+                            "type": request["type"],
+                            "summary": request["summary"],
+                            "source": request["source"],
+                            "status": request["status"],
+                            "evidence_refs": request["evidence_refs"],
+                            "metadata": request["metadata"],
+                        }
+                        if any(recorded[field] != value for field, value in expected.items()):
+                            raise ValueError("event_id reused with different event content or session")
+                        results.append(recorded)
+                        continue
+
+                    results.append(self._append_transaction(
+                        db, session_id=session_id, project=session["project"],
+                        event_type=request["type"], summary=request["summary"],
+                        source=request["source"], evidence_refs=request["evidence_refs"],
+                        metadata=request["metadata"], status=request["status"],
+                        timestamp=utc_now(), event_id=request["event_id"],
+                    ))
+                db.execute("COMMIT")
+            except Exception:
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
+                raise
+        return results
+
     def get_session(self, session_id: str) -> dict[str, Any]:
         _text(session_id, "session_id", 128)
         with closing(self._connect(write=False)) as db:
